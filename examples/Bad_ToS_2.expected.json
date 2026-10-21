@@ -1,0 +1,19 @@
+{
+ "note": "Derived by the assistant from the evidence_in_examples column of risks.csv; correct as needed. Value = expected status or a list of acceptable statuses.",
+ "risks": {
+  "R-01": "risk_found",
+  "R-04": "risk_found",
+  "R-09": "risk_found",
+  "R-10": "risk_found",
+  "R-11": "risk_found",
+  "R-12": "risk_found",
+  "R-13": "risk_found",
+  "R-19": "risk_found",
+  "R-21": "risk_found",
+  "R-25": "risk_found",
+  "R-28": [
+   "risk_found",
+   "insufficient_data"
+  ]
+ }
+}

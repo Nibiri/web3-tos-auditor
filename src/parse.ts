@@ -18,7 +18,8 @@ interface Block { kind: "heading" | "para"; text: string; page: number | null }
 
 const MAX_SECTION_CHARS = 8000;
 
-function extractRaw(file: string): Line[] {
+function extractRaw(file: string, override?: string): Line[] {
+  if (override !== undefined) return override.split("\n").map((text) => ({ text, page: null }));
   const ext = path.extname(file).toLowerCase();
   if (ext === ".pdf") {
     const out = execFileSync("pdftotext", [file, "-"], { maxBuffer: 256 * 1024 * 1024 }).toString("utf8");
@@ -98,9 +99,9 @@ function chunkParas(paras: string[]): string[] {
 }
 
 /** Parse PDF/DOCX into sections. Ids come from position + title, never from the document's own numbering. */
-export function parseDocument(file: string): ParsedDoc {
-  const isPdf = path.extname(file).toLowerCase() === ".pdf";
-  const blocks = toBlocks(extractRaw(file), isPdf);
+export function parseDocument(file: string, textOverride?: string): ParsedDoc {
+  const isPdf = path.extname(file).toLowerCase() === ".pdf" && textOverride === undefined;
+  const blocks = toBlocks(extractRaw(file, textOverride), isPdf);
 
   // Top-level grouping: a heading starts a new section; sub-numbered headings (1.1) merge into the parent
   // section to avoid hundreds of tiny sections, except when no parent exists yet.

@@ -1,36 +1,17 @@
 {
-  "note": "DRAFT written by the assistant; anchors = text fragments. A conflict is found when one output conflict has a quote matching anchors[0] and a different quote matching anchors[1].",
-  "conflicts": [
-    {
-      "id": "custody-claim-vs-pooled-wallets",
-      "topic": "custody",
-      "type": "claim_vs_mechanic",
-      "anchors": [
-        [
-          "fully non-custodial",
-          "does not act as a financial custodian",
-          "exclusive control over their digital assets",
-          "does not exercise control over users"
-        ],
-        [
-          "pooled blockchain addresses administered by VelaYield",
-          "signing credentials maintained by VelaYield",
-          "temporarily hold users' deposited assets"
-        ]
-      ]
-    },
-    {
-      "id": "cannot-initiate-vs-may-initiate-transfers",
-      "topic": "custody",
-      "type": "claim_vs_mechanic",
-      "anchors": [
-        [
-          "cannot initiate asset transfers without direct authorization"
-        ],
-        [
-          "may initiate transfers from operational wallets"
-        ]
-      ]
-    }
-  ]
+ "note": "Derived by the assistant from the evidence_in_examples column of risks.csv; correct as needed. Value = expected status or a list of acceptable statuses.",
+ "risks": {
+  "R-01": "risk_found",
+  "R-05": "risk_found",
+  "R-06": "risk_found",
+  "R-07": "risk_found",
+  "R-11": "risk_found",
+  "R-14": "risk_found",
+  "R-15": "risk_found",
+  "R-20": "risk_found",
+  "R-21": "risk_found",
+  "R-22": "risk_found",
+  "R-23": "risk_found",
+  "R-25": "risk_found"
+ }
 }

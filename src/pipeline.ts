@@ -1,165 +1,125 @@
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { z } from "zod";
-import type { Config } from "./config.js";
+import { applies, type Config, type Risk } from "./config.js";
 import { parseDocument, type ParsedDoc } from "./parse.js";
 import { MODEL, runAgent, type RunStats } from "./agent.js";
-import { mergePrompt, subagentPrompt, verifierPrompt } from "./prompts.js";
-import { makeFindingsSchema, MergeSchema, VerdictSchema, type Conflict, type Finding } from "./schema.js";
+import { agentPrompt, profilePrompt, verifierPrompt } from "./prompts.js";
+import { makeAgentSchema, ProfileSchema, STATUS_RU, VerdictSchema, type AgentResult, type Profile, type Result, type Status } from "./schema.js";
 import { verifyQuote } from "./verify.js";
 import { normText } from "./normalize.js";
+import { isScannedPdf, ocrPdf } from "./ocr.js";
+import { findPlaceholders } from "./mechanical.js";
 import type { ToolCallRecord } from "./tools.js";
 
 export interface AuditResult {
   document: string;
-  conflicts: Conflict[];
-  dropped: { topic: string; reason: string; finding: Finding }[];
+  profile: Profile;
+  results: Result[];
+  skipped: { riskId: string; reason: string }[];
+  dropped: { riskId: string; reason: string }[];
   audit: {
-    runId: string;
-    configHash: string;
-    configFiles: Record<string, string>;
-    model: string;
-    startedAt: string;
-    finishedAt: string;
-    totalCostUsd: number;
-    runs: RunStats[];
-    toolCalls: ToolCallRecord[];
+    runId: string; configHash: string; configFiles: Record<string, string>; model: string;
+    startedAt: string; finishedAt: string; totalCostUsd: number; runs: RunStats[]; toolCalls: ToolCallRecord[];
   };
 }
 
-type Checked = { topic: string; finding: Finding; quotes: Conflict["quotes"] };
+const mk = (r: Risk, p: Partial<Result> & { status: Status }): Result => ({
+  riskId: r.id, topic: r.topic, checkType: r.check_type, risk: r.risk, statusRu: STATUS_RU[p.status],
+  provisionFound: false, conflictType: null, quotes: [], explanation: "", reconcileNote: "", suggestedFix: "", needsReview: false, ...p,
+});
 
-/** Code-level quote verification. Drops findings without two verified quotes (one for insufficient_data). */
-function checkFinding(doc: ParsedDoc, topic: string, f: Finding): { ok: Checked } | { drop: string } {
-  const quotes: Conflict["quotes"] = [];
-  for (const q of f.quotes) {
+/** Code-level checks on one agent answer: every quote is verified against the document; claims without proof are downgraded. */
+function finalize(doc: ParsedDoc, r: Risk, a: AgentResult, dropped: AuditResult["dropped"]): Result {
+  const quotes: Result["quotes"] = [];
+  for (const q of a.quotes) {
     const v = verifyQuote(doc, q.text);
-    if (!v.verified) return { drop: `quote not verified (${v.reason}): "${q.text.slice(0, 80)}"` };
+    if (!v.verified) { dropped.push({ riskId: r.id, reason: `quote not verified (${v.reason}): "${q.text.slice(0, 80)}"` }); continue; }
     quotes.push({ text: v.canonicalText!, location: v.location!, role: q.role });
   }
-  const distinct = new Set(quotes.map((q) => normText(q.text)));
-  const need = f.status === "insufficient_data" ? 1 : 2;
-  if (distinct.size < need) return { drop: `needs ${need} distinct verified quotes, got ${distinct.size}` };
-  return { ok: { topic, finding: f, quotes } };
-}
+  const distinct = new Set(quotes.map((q) => normText(q.text))).size;
+  const base = { provisionFound: a.provisionFound, conflictType: a.conflictType === "none" ? null : a.conflictType, quotes, explanation: a.explanation, suggestedFix: a.suggestedFix };
+  const downgrade = (why: string) => mk(r, { ...base, status: "insufficient_data", explanation: `${a.explanation} [Проверка кодом: ${why}]`, suggestedFix: "" });
 
-const keyOf = (c: Checked) =>
-  c.quotes.map((q) => normText(q.text).slice(0, 60)).sort().join("|");
+  const isContradiction = r.check_type === "conflict" && base.conflictType !== null;
+  if (isContradiction && a.status === "risk_found" && distinct < 2) return downgrade("не найдены две подтверждённые цитаты, конфликт не принят");
+  if (a.status === "no_risk" && a.provisionFound && distinct < 1) return downgrade("положение не подтверждено цитатой");
+  if (a.status === "risk_found" && a.provisionFound && !isContradiction && distinct < 1) return downgrade("положение не подтверждено цитатой");
+  if (r.check_type === "cross_doc" && a.status === "insufficient_data" && distinct < 1) return mk(r, { ...base, status: "insufficient_data" });
+  return mk(r, { ...base, status: a.status });
+}
 
 export async function auditDocument(file: string, cfg: Config, onProgress: (s: string) => void = () => {}): Promise<AuditResult> {
   const startedAt = new Date().toISOString();
-  const doc = parseDocument(file);
+  const ocrText = isScannedPdf(file) ? await ocrPdf(file, onProgress) : undefined;
+  const doc = parseDocument(file, ocrText);
   const log: ToolCallRecord[] = [];
   const stats: RunStats[] = [];
   const dropped: AuditResult["dropped"] = [];
-  const FindingsSchema = makeFindingsSchema(cfg.conflictTypes);
+  onProgress(`${doc.name}: ${doc.sections.length} sections`);
 
-  onProgress(`${doc.name}: ${doc.sections.length} sections, running ${cfg.topics.length} topic agents`);
+  const profile = await runAgent({
+    label: "profile", system: profilePrompt(), prompt: `Classify the document "${doc.name}".`,
+    schema: ProfileSchema, doc, log, stats, maxTurns: 20,
+  });
+  onProgress(`${doc.name}: profile ${profile.projectType} [${profile.tags.join(",")}] ${profile.jurisdictions.join(",")}`);
 
-  // Orchestrator: fan out one sub-agent per topic (own prompt, own context), then collect.
-  const perTopic = await Promise.all(
-    cfg.topics.map(async (t) => {
-      const out = await runAgent({
-        label: `topic:${t.topic}`,
-        system: subagentPrompt(t, cfg),
-        prompt: `Analyze the document "${doc.name}" for contradictions on the topic "${t.topic}". Return your findings.`,
-        schema: FindingsSchema,
-        doc, log, stats,
-      });
-      onProgress(`${doc.name}: topic ${t.topic} -> ${out.findings.length} candidate(s)`);
-      return { topic: t.topic, findings: out.findings };
-    }),
-  );
+  const skipped: AuditResult["skipped"] = [];
+  const active = cfg.risks.filter((r) => (applies(r, profile.tags) ? true : (skipped.push({ riskId: r.id, reason: `applies_to=${r.applies_to.join(";")}, project tags=[${profile.tags.join(",")}]` }), false)));
 
-  // Merge + code-level quote verification + dedupe.
-  const seen = new Set<string>();
-  const checked: Checked[] = [];
-  for (const { topic, findings } of perTopic) {
-    for (const f of findings) {
-      const r = checkFinding(doc, topic, f);
-      if ("drop" in r) { dropped.push({ topic, reason: r.drop, finding: f }); continue; }
-      const k = keyOf(r.ok);
-      if (seen.has(k)) { dropped.push({ topic, reason: "duplicate of another topic's finding", finding: f }); continue; }
-      seen.add(k);
-      checked.push(r.ok);
-    }
+  const out = new Map<string, Result>();
+
+  // Mechanical checks: code only.
+  for (const r of active.filter((x) => x.check_type === "mechanical")) {
+    const ph = findPlaceholders(doc);
+    out.set(r.id, ph.length
+      ? mk(r, { status: "risk_found", provisionFound: true, quotes: ph.slice(0, 6).map((p) => ({ ...p, role: "reference" as const })),
+          explanation: `В тексте найдены незаполненные поля (${ph.length}).`, suggestedFix: r.output_if_found })
+      : mk(r, { status: "no_risk", explanation: "Незаполненных полей не найдено." }));
   }
 
-  // Merge candidates that describe the same underlying contradiction.
-  let kept = checked;
-  if (checked.length > 1) {
-    const m = await runAgent({
-      label: "merge",
-      system: mergePrompt(),
-      prompt: checked
-        .map((c, i) => `#${i} [${c.topic}/${c.finding.type}] ${c.quotes.map((q) => `(${q.location}) "${q.text}"`).join(" <-> ")}\n   ${c.finding.explanation}`)
-        .join("\n\n"),
-      schema: MergeSchema, doc, log, stats, maxTurns: 5,
+  // One agent per area, each with its own prompt and its own subset of risks.
+  await Promise.all(cfg.agents.map(async (ag) => {
+    const risks = active.filter((r) => r.check_type !== "mechanical" && ag.risk_topics.includes(r.topic));
+    if (!risks.length) return;
+    const Schema = makeAgentSchema(risks.map((r) => r.id), cfg.conflictTypes);
+    const res = await runAgent({
+      label: `agent:${ag.topic}`, system: agentPrompt(ag, risks, profile, cfg),
+      prompt: `Check the document "${doc.name}" against your ${risks.length} risks and return one result per risk.`,
+      schema: Schema, doc, log, stats,
     });
-    const taken = new Set<number>();
-    kept = [];
-    for (const cl of m.clusters) {
-      const members = cl.members.filter((i) => i >= 0 && i < checked.length && !taken.has(i));
-      if (!members.length) continue;
-      members.forEach((i) => taken.add(i));
-      const rep = members.includes(cl.representative) ? cl.representative : members[0];
-      const repC = checked[rep];
-      const others = members.filter((i) => i !== rep);
-      for (const i of others) dropped.push({ topic: checked[i].topic, reason: `merged into ${repC.quotes[0].location}`, finding: checked[i].finding });
-      if (others.length) {
-        const extra = others.flatMap((i) => checked[i].quotes.map((q) => q.location));
-        repC.finding = { ...repC.finding, explanation: `${repC.finding.explanation} (Related clauses: ${[...new Set(extra)].join("; ")}.)` };
-      }
-      kept.push(repC);
+    for (const r of risks) {
+      const a = res.results.find((x) => x.riskId === r.id);
+      out.set(r.id, a ? finalize(doc, r, a, dropped) : mk(r, { status: "insufficient_data", explanation: "Агент не вернул ответ по этой проверке." }));
     }
-    checked.forEach((c, i) => { if (!taken.has(i)) kept.push(c); });
-    onProgress(`${doc.name}: merge ${checked.length} -> ${kept.length}`);
-  }
+    onProgress(`${doc.name}: ${ag.topic} done (${risks.length} checks)`);
+  }));
 
-  // Verifier: try to reconcile each conflict. Reconcilable -> needs_review, else conflict.
-  const conflicts = await Promise.all(
-    kept.map(async (c, i): Promise<Conflict> => {
-      const id = "C-" + crypto.createHash("sha1").update(doc.name + keyOf(c)).digest("hex").slice(0, 8);
-      if (c.finding.status === "insufficient_data") {
-        return { conflictId: id, topic: c.topic, type: c.finding.type, status: "insufficient_data", quotes: c.quotes,
-          explanation: c.finding.explanation, reconcileNote: "", suggestedFix: c.finding.suggestedFix };
-      }
-      const v = await runAgent({
-        label: `verifier:${i + 1}`,
-        system: verifierPrompt(cfg),
-        prompt: `Candidate contradiction (topic: ${c.topic}, type: ${c.finding.type}).\n\nExplanation from analyst: ${c.finding.explanation}\n\nQuotes:\n${c.quotes
-          .map((q, n) => `${n + 1}. [${q.role}] (${q.location}) "${q.text}"`).join("\n")}\n\nTry to reconcile the two norms.`,
-        schema: VerdictSchema,
-        doc, log, stats,
-        maxTurns: 25,
-      });
-      onProgress(`${doc.name}: ${id} verifier -> ${v.reconcilable ? "needs_review" : "conflict"}`);
-      return { conflictId: id, topic: c.topic, type: c.finding.type,
-        status: v.reconcilable ? "needs_review" : "conflict", quotes: c.quotes,
-        explanation: c.finding.explanation, reconcileNote: v.reconcileNote, suggestedFix: c.finding.suggestedFix };
-    }),
-  );
+  // Verifier: try to reconcile every conflict-type finding.
+  await Promise.all([...out.values()].filter((x) => x.checkType === "conflict" && x.status === "risk_found" && x.conflictType !== null).map(async (c) => {
+    const v = await runAgent({
+      label: `verifier:${c.riskId}`, system: verifierPrompt(cfg),
+      prompt: `Risk ${c.riskId}: ${c.risk}\nAnalyst explanation: ${c.explanation}\nQuotes:\n${c.quotes.map((q, i) => `${i + 1}. [${q.role}] (${q.location}) "${q.text}"`).join("\n")}\n\nTry to reconcile the norms.`,
+      schema: VerdictSchema, doc, log, stats, maxTurns: 25,
+    });
+    c.reconcileNote = v.reconcileNote;
+    if (v.reconcilable) { c.status = "insufficient_data"; c.statusRu = STATUS_RU.insufficient_data; c.needsReview = true; }
+    onProgress(`${doc.name}: ${c.riskId} verifier -> ${v.reconcilable ? "needs review" : "risk confirmed"}`);
+  }));
 
+  const results = cfg.risks.map((r) => out.get(r.id)).filter((x): x is Result => !!x);
   const finishedAt = new Date().toISOString();
   return {
-    document: doc.name, conflicts, dropped,
-    audit: {
-      runId: startedAt.replace(/[:.]/g, "-"),
-      configHash: cfg.hash, configFiles: cfg.files, model: MODEL(),
-      startedAt, finishedAt,
-      totalCostUsd: stats.reduce((a, s) => a + s.costUsd, 0),
-      runs: stats, toolCalls: log,
-    },
+    document: doc.name, profile, results, skipped, dropped,
+    audit: { runId: startedAt.replace(/[:.]/g, "-"), configHash: cfg.hash, configFiles: cfg.files, model: MODEL(), startedAt, finishedAt,
+      totalCostUsd: stats.reduce((a, s) => a + s.costUsd, 0), runs: stats, toolCalls: log },
   };
 }
 
-/** Writes <outDir>/<doc>.result.json (schema output) and <doc>.audit.json (audit log). */
 export function writeResult(r: AuditResult, outDir = "out") {
   const dir = path.resolve(outDir, r.audit.runId);
   fs.mkdirSync(dir, { recursive: true });
   const base = path.join(dir, r.document);
-  fs.writeFileSync(base + ".result.json", JSON.stringify({ document: r.document, conflicts: r.conflicts, dropped: r.dropped }, null, 2));
+  fs.writeFileSync(base + ".result.json", JSON.stringify({ document: r.document, profile: r.profile, results: r.results, skipped: r.skipped, dropped: r.dropped }, null, 2));
   fs.writeFileSync(base + ".audit.json", JSON.stringify(r.audit, null, 2));
   return dir;
 }

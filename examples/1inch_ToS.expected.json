@@ -1,1 +1,13 @@
-{"conflicts": []}
+{
+ "note": "Derived by the assistant from the evidence_in_examples column of risks.csv; correct as needed. Value = expected status or a list of acceptable statuses.",
+ "risks": {
+  "R-01": "no_risk",
+  "R-08": "risk_found",
+  "R-11": "no_risk",
+  "R-28": [
+   "insufficient_data",
+   "risk_found"
+  ],
+  "R-31": "insufficient_data"
+ }
+}

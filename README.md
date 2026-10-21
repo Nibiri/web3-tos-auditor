@@ -14,7 +14,3 @@ Outputs per run in out/<runId>/: `<doc>.result.json` (schema output + dropped ca
 
 Env: AUDITOR_MODEL (default claude-sonnet-5-5), OUTPUT_LANG (default Russian), CONCURRENCY (eval, default 2), EXAMPLES_DIR.
 Expected files: `examples/<name>.expected.json` = `{"conflicts":[{"id","anchors":[[sideA fragments],[sideB fragments]]}]}`.
-
-## Browser version
-
-`artifact/tos-auditor.html` is the same pipeline as a single page (paste text or upload PDF/DOCX/TXT). It was published as a Claude artifact and runs on the viewer's own Claude account.

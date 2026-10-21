@@ -198,7 +198,7 @@ Rules by check_type:
 - presence: the required provision must exist AND answer every part of the question. If any part is unanswered (no forum named, no limit amount, amount is a placeholder, only a cross-reference to "applicable law", optional wording such as "may seek relief"), that is risk_found. Missing entirely = risk_found. no_risk only when every part is answered by a quoted clause.
 - conflict: the risk is either (a) a CONTRADICTION: two clauses that cannot both be applied to the same situation. Then you need TWO verified quotes and one conflictType from the list below. Or (b) a GAP or DEFECT named in the question (no limit amount, unfilled value, an exception that cancels the limit, optional wording instead of a binding forum, an absent counterpart clause). Then answer risk_found with conflictType "none", quote the clause that shows the gap (or provisionFound=false if entirely absent).
 - cross_doc: if the text relies on a document that is not provided (policy, appendix, another agreement) answer insufficient_data and quote the reference. If nothing is referenced, answer no_risk.
-Hard rules: do not invent violations or legal consequences. Do not draw categorical conclusions when information is missing; use insufficient_data. Jurisdiction hints are drafts for a lawyer, never state them as law. Return exactly one result per risk id.
+Hard rules: do not invent violations or legal consequences. Do not draw categorical conclusions when information is missing; use insufficient_data. Jurisdiction hints are drafts for a lawyer, never state them as law. The explanation must agree with the status: if it describes any deficiency named in the question (for example no notice period, no appeal route), the status is risk_found, not no_risk. Return exactly one result per risk id.
 
 CONFLICT TYPES:
 ${TYPES_MD}
@@ -207,6 +207,16 @@ RISKS TO CHECK:
 ${risks.map(r=>riskBlock(r,prof)).join("\n\n")}
 
 Reply with ONLY a JSON object: {"results":[{"riskId":"R-00","status":"risk_found"|"no_risk"|"insufficient_data","provisionFound":true,"conflictType":"none"|"<type>","quotes":[{"text":"<verbatim>","role":"claim|mechanic|exception|definition|reference|provision"}],"explanation":"...","suggestedFix":"..."}]}`;
+const consistencyPrompt=items=>`You check legal check results for internal consistency. Each result has a status and an explanation written by an analyst.
+- risk_found: the explanation describes a deficiency, gap, contradiction or risk named in the check.
+- no_risk: the explanation says the provision exists and adequately covers the question, with no deficiency.
+- insufficient_data: the explanation says the answer cannot be given from the text.
+Find results whose status does NOT match what the explanation says (for example status no_risk while the explanation describes a missing notice period). Do not re-judge the document and do not change a status when the explanation supports it. Return only the inconsistent ones with the status the explanation supports. If none, return an empty list.
+
+RESULTS:
+${items.map(i=>`[${i.riskId}] check: ${i.risk}\n  status: ${i.status}\n  explanation: ${i.explanation}`).join("\n\n")}
+
+Reply with ONLY JSON: {"fixes":[{"riskId":"R-00","correctStatus":"risk_found"|"no_risk"|"insufficient_data","why":"<one sentence in ${lang}>"}]}`;
 const verifierPrompt=(c)=>`You are the verifier of a candidate contradiction in a Web3 Terms of Service. Try to RECONCILE the two norms: find a reasonable, text-based reading under which both can hold (different scope or product, one clause qualifying the other, a standard carve-out, a defined term). Read the surrounding clauses first.
 ${TOOLS_TXT}
 - reconcilable=true only if you can state a concrete reading under which both quotes hold; put it in reconcileNote.
@@ -310,6 +320,21 @@ runEl.onclick=async()=>{
       for(const r of risks){const a=list.find(x=>x&&x.riskId===r.id);
         out.set(r.id,a?finalize(secs,r,a,dropped):mkRes(r,{status:"insufficient_data",explanation:"Агент не вернул ответ по этой проверке."}))}
       log("step",`Готово: ${ag.topic} (${risks.length} проверок)`)}));
+    const judged=[...out.values()].filter(x=>x.explanation&&x.checkType!=="mechanical");
+    if(judged.length){
+      log("step","Проверяю согласованность статусов и объяснений");
+      try{
+        const cr=await ask(consistencyPrompt(judged.map(x=>({riskId:x.riskId,risk:x.risk,status:x.status,explanation:x.explanation}))),[],"quick","согласованность");
+        for(const f of (Array.isArray(cr&&cr.fixes)?cr.fixes:[])){
+          const x=out.get(f&&f.riskId),ok=["risk_found","no_risk","insufficient_data"];
+          if(!x||!ok.includes(f.correctStatus)||x.status===f.correctStatus)continue;
+          const r=RISKS.find(q=>q.id===f.riskId);
+          log("step",`${x.riskId}: статус исправлен ${x.statusRu} → ${STATUS_RU[f.correctStatus]}`);
+          x.status=f.correctStatus;x.statusRu=STATUS_RU[f.correctStatus];
+          x.explanation+=` [Статус исправлен проверкой согласованности: ${String(f.why||"").slice(0,300)}]`;
+          x.suggestedFix=f.correctStatus==="risk_found"?(x.suggestedFix||r.output_if_found):""}
+      }catch(e){if(e&&e.code==="cancelled")throw e;log("step","Проверка согласованности пропущена: "+(e&&e.message||"ошибка"))}
+    }
     const toVerify=[...out.values()].filter(x=>x.checkType==="conflict"&&x.status==="risk_found"&&x.conflictType);
     if(toVerify.length)log("step",`Верификатор проверяет противоречий: ${toVerify.length}`);
     await Promise.all(toVerify.map(async c=>{

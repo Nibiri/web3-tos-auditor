@@ -56,3 +56,7 @@ export const makeAgentSchema = (riskIds: string[], conflictTypes: string[]) =>
 export type AgentResult = z.infer<ReturnType<typeof makeAgentSchema>>["results"][number];
 
 export const VerdictSchema = z.object({ reconcilable: z.boolean(), reconcileNote: z.string() });
+
+export const ConsistencySchema = z.object({
+  fixes: z.array(z.object({ riskId: z.string(), correctStatus: z.enum(STATUSES), why: z.string() })),
+});

@@ -3,8 +3,8 @@ import path from "node:path";
 import { applies, type Config, type Risk } from "./config.js";
 import { parseDocument, type ParsedDoc } from "./parse.js";
 import { MODEL, runAgent, type RunStats } from "./agent.js";
-import { agentPrompt, profilePrompt, verifierPrompt } from "./prompts.js";
-import { makeAgentSchema, ProfileSchema, STATUS_RU, VerdictSchema, type AgentResult, type Profile, type Result, type Status } from "./schema.js";
+import { agentPrompt, consistencyPrompt, profilePrompt, verifierPrompt } from "./prompts.js";
+import { ConsistencySchema, makeAgentSchema, ProfileSchema, STATUS_RU, VerdictSchema, type AgentResult, type Profile, type Result, type Status } from "./schema.js";
 import { verifyQuote } from "./verify.js";
 import { normText } from "./normalize.js";
 import { isScannedPdf, ocrPdf } from "./ocr.js";
@@ -93,6 +93,26 @@ export async function auditDocument(file: string, cfg: Config, onProgress: (s: s
     }
     onProgress(`${doc.name}: ${ag.topic} done (${risks.length} checks)`);
   }));
+
+  // Consistency pass: the status must agree with what the explanation says.
+  const judged = [...out.values()].filter((x) => x.explanation && x.checkType !== "mechanical");
+  if (judged.length) {
+    const cr = await runAgent({
+      label: "consistency", system: "You are a careful legal QA reviewer.",
+      prompt: consistencyPrompt(judged.map((x) => ({ riskId: x.riskId, risk: x.risk, status: x.status, explanation: x.explanation }))),
+      schema: ConsistencySchema, doc, log, stats, maxTurns: 3,
+    });
+    for (const f of cr.fixes) {
+      const x = out.get(f.riskId);
+      if (!x || x.status === f.correctStatus) continue;
+      const risk = cfg.risks.find((r) => r.id === f.riskId)!;
+      onProgress(`${doc.name}: ${f.riskId} status ${x.status} -> ${f.correctStatus}`);
+      x.status = f.correctStatus; x.statusRu = STATUS_RU[f.correctStatus];
+      x.explanation += ` [Статус исправлен проверкой согласованности: ${f.why}]`;
+      if (f.correctStatus === "risk_found" && !x.suggestedFix) x.suggestedFix = risk.output_if_found;
+      if (f.correctStatus !== "risk_found") x.suggestedFix = "";
+    }
+  }
 
   // Verifier: try to reconcile every conflict-type finding.
   await Promise.all([...out.values()].filter((x) => x.checkType === "conflict" && x.status === "risk_found" && x.conflictType !== null).map(async (c) => {

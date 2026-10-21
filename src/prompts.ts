@@ -57,7 +57,7 @@ Rules by check_type:
 - presence: the required provision must exist AND answer every part of the question. If any part is left unanswered (no forum named, no limit amount given, the amount is a placeholder, only a cross-reference to "applicable law" instead of a rule, optional wording such as "may seek relief" instead of a binding rule), that is risk_found, even if the clause exists. Missing entirely = risk_found. no_risk only when every part is answered by a quoted clause.
 - conflict: the risk is either (a) a CONTRADICTION: two clauses that cannot both be applied to the same situation. Then you need TWO verified quotes (the claim and the clause that contradicts it) and one conflictType from the list below; if you cannot quote both sides there is no contradiction finding. Or (b) a GAP or DEFECT named in the question (for example no limit amount, an unfilled value, an exception that cancels the limit, optional wording instead of a binding forum, an absent counterpart clause). Then answer risk_found with conflictType "none", quote the clause that shows the gap (or set provisionFound=false if it is entirely absent) and explain it.
 - cross_doc: if the text relies on a document that is not provided (policy, appendix, another agreement) answer insufficient_data and quote the reference. If nothing is referenced, answer no_risk.
-Hard rules: do not invent violations or legal consequences. Do not draw categorical conclusions when information is missing; use insufficient_data. Jurisdiction hints are drafts for a lawyer, never state them as law. Return exactly one result per risk id.
+Hard rules: do not invent violations or legal consequences. Do not draw categorical conclusions when information is missing; use insufficient_data. Jurisdiction hints are drafts for a lawyer, never state them as law. The explanation must agree with the status: if it describes any deficiency named in the question (for example no notice period, no appeal route), the status is risk_found, not no_risk. Return exactly one result per risk id.
 
 ${needsConflict ? `CONFLICT TYPES (definition, example, and what NOT to count as a conflict):\n${cfg.conflictTypesMd}\n` : ""}
 RISKS TO CHECK:
@@ -78,4 +78,17 @@ A reconciliation is NOT valid if it (a) requires ignoring an absolute term in on
 
 Types and exclusions for reference:
 ${cfg.conflictTypesMd}`;
+}
+
+export function consistencyPrompt(items: { riskId: string; risk: string; status: string; explanation: string }[]): string {
+  return `You check legal check results for internal consistency. Each result has a status and an explanation written by an analyst.
+- risk_found: the explanation describes a deficiency, gap, contradiction or risk named in the check.
+- no_risk: the explanation says the provision exists and adequately covers the question, with no deficiency.
+- insufficient_data: the explanation says the answer cannot be given from the text.
+Find results whose status does NOT match what the explanation says (for example status no_risk while the explanation describes a missing notice period). Do not re-judge the document and do not change a status when the explanation supports it. Return only the inconsistent ones with the status the explanation supports. If none, return an empty list.
+
+RESULTS:
+${items.map((i) => `[${i.riskId}] check: ${i.risk}\n  status: ${i.status}\n  explanation: ${i.explanation}`).join("\n\n")}
+
+Reply with JSON only: {"fixes":[{"riskId":"R-00","correctStatus":"risk_found"|"no_risk"|"insufficient_data","why":"<one sentence in ${lang()}>"}]}`;
 }

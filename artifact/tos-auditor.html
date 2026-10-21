@@ -79,6 +79,8 @@ details summary{cursor:pointer;color:var(--muted)}
     <p class="note">Проверка идёт по каталогу из 33 рисков и тратит ваш лимит Claude: 6–15 запросов на документ. Сканы PDF распознаются Claude по картинкам страниц (до 30 страниц).</p>
   </section>
 
+  <section id="saved" class="panel" hidden><h2>Сохранённые проверки</h2><p class="note">Результаты видны всем, у кого есть доступ к артефакту. Нажмите на строку, чтобы открыть.</p><div id="savedlist" style="display:flex;flex-direction:column;gap:6px"></div></section>
+
   <section id="progress" class="panel" hidden aria-live="polite"><h2>Ход работы</h2><div class="log" id="log"></div></section>
   <section id="out" hidden style="display:flex;flex-direction:column;gap:16px"></section>
 </main>
@@ -220,11 +222,11 @@ Reply with ONLY JSON: {"reconcilable":true|false,"reconcileNote":"..."}`;
 /* ---------- run ---------- */
 const $=id=>document.getElementById(id);
 const docEl=$("doc"),runEl=$("run"),stopEl=$("stop"),logEl=$("log"),outEl=$("out");
-let sample=null,ctl=null,result=null,lastResults=[];
+let sample=null,ctl=null,result=null,lastResults=[],db=null,curName="";
 const esc=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 function updMeta(){const n=docEl.value.trim().length;const secs=n?parse(docEl.value).length:0;
   $("docmeta").textContent=n?`${n.toLocaleString("ru")} символов · разделов найдено: ${secs}`:"Загрузите файл или вставьте текст, затем нажмите кнопку."}
-docEl.addEventListener("input",updMeta);
+docEl.addEventListener("input",()=>{curName="";updMeta()});
 stopEl.onclick=()=>ctl&&ctl.abort();
 function addLog(kind,msg){const d=document.createElement("div");d.innerHTML=(kind==="tool"?"  · ":"<b>▸ </b>")+esc(msg);
   if(kind==="tool"){const prev=logEl.querySelector("[data-live]");if(prev)prev.remove();d.dataset.live=1}
@@ -235,8 +237,27 @@ async function ask(prompt,tools,tier,label){
   catch(e){if(e&&e.code==="cancelled")throw e;throw Object.assign(new Error(label+": "+(errCopy[e&&e.code]||(e&&e.message)||"ошибка")),{code:e&&e.code})}
 }
 (async()=>{try{sample=await claude.use("sample")}catch(e){sample=null}
-  if(!sample){const m=document.createElement("p");m.className="err";m.id="nosample";m.textContent="Анализ здесь не запускается: артефакт работает через ваш аккаунт Claude. Откройте ссылку, войдя в claude.ai под своей учётной записью (если доступ дали по приглашению, примите его), либо попросите владельца запустить проверку. Загрузка файла и разбор на разделы работают и без входа.";$("docmeta").after(m)}
+  if(!sample){const m=document.createElement("p");m.className="err";m.id="nosample";m.textContent="Анализ здесь не запускается: артефакт работает через ваш аккаунт Claude. Откройте ссылку, войдя в claude.ai под своей учётной записью (если доступ дали по приглашению, примите его), либо попросите владельца запустить проверку. Загрузка файла и разбор на разделы работают и без входа.";$("docmeta").after(m);
+    const dg=document.createElement("pre");dg.className="meta";dg.style.whiteSpace="pre-wrap";dg.id="diag";dg.textContent="Диагностика…";m.after(dg);
+    (async()=>{const d=["window.claude: "+(window.claude?"есть":"нет"),"адрес: "+location.host];
+      try{const pm=await claude.use("permissions");if(pm){d.push("разрешения: "+JSON.stringify(await pm.state()));
+        const b=document.createElement("button");b.textContent="Открыть настройки разрешений";b.onclick=()=>pm.manage().catch(()=>{});dg.after(b)}else d.push("permissions: недоступно")}catch(e){d.push("permissions: ошибка")}
+      dg.textContent="Диагностика (пришлите разработчику, если проблема останется):\n"+d.join("\n")})()}
   updMeta()})();
+
+
+(async()=>{try{db=await claude.use("db")}catch(e){db=null}
+  if(!db)return;$("saved").hidden=false;
+  db.collection("runs").orderBy("createdAt","desc").limit(30).onSnapshot(snap=>{
+    const box=$("savedlist");box.textContent="";
+    if(snap.empty){const p=document.createElement("p");p.className="note";p.textContent="Пока ничего не сохранено. Результат каждой проверки сохраняется сюда автоматически.";box.append(p);return}
+    for(const d of snap.docs){const x=d.data()||{};const rs=Array.isArray(x.results)?x.results:[];
+      const b=document.createElement("button");b.style.textAlign="left";
+      const n=s=>rs.filter(r=>r&&r.status===s).length;
+      b.textContent=`${String(x.name||"Без названия").slice(0,70)} · ${new Date(x.createdAt||0).toLocaleString("ru",{dateStyle:"short",timeStyle:"short"})} · риск: ${n("risk_found")}, мало данных: ${n("insufficient_data")}, без риска: ${n("no_risk")}`;
+      b.onclick=()=>{const prof=x.profile||{tags:[],projectType:"",jurisdiction:"unknown",operator:""};result={profile:prof,results:rs,dropped:[]};lastResults=rs;filter="all";render(rs,prof,[],"-");outEl.scrollIntoView&&outEl.scrollIntoView()};
+      box.append(b)}
+  },e=>{$("savedlist").textContent="Не удалось загрузить сохранённые проверки: "+(e&&e.code||"ошибка")})})();
 
 const PLACEHOLDER=/\[[^\]\n]{2,80}\]|\bTBD\b|_{4,}/g;
 function placeholders(secs){const out=[],seen=new Set();
@@ -298,6 +319,12 @@ runEl.onclick=async()=>{
     const results=RISKS.map(r=>out.get(r.id)).filter(Boolean);
     result={profile:prof,results,dropped};lastResults=results;
     render(results,prof,dropped,((Date.now()-t0)/1000).toFixed(0));
+    if(db){try{
+      const name=(curName||(docEl.value.trim().split("\n")[0]||"Документ")).slice(0,80);
+      const compact=results.map(r=>({...r,quotes:r.quotes.map(q=>({...q,text:q.text.slice(0,500)})),explanation:r.explanation.slice(0,1500),reconcileNote:r.reconcileNote.slice(0,1500),suggestedFix:r.suggestedFix.slice(0,800)}));
+      await db.collection("runs").add({name,createdAt:Date.now(),profile:prof,results:compact});
+      log("step","Результат сохранён: его увидят все, у кого есть доступ");
+    }catch(e){log("step","Результат не сохранён: "+((e&&e.code)||(e&&e.message)||"ошибка"))}}
     log("step","Готово");
   }catch(e){
     if(e&&e.code==="cancelled")log("step","Остановлено");
@@ -361,7 +388,7 @@ async function loadFile(f){
     else text=await f.text();
     text=text.replace(/\r\n?/g,"\n").trim();
     if(text.length<200)throw new Error("в файле почти нет текста");
-    docEl.value=text;updMeta();info.textContent="Загружено: "+f.name;
+    docEl.value=text;curName=f.name.replace(/\.[^.]+$/,"");updMeta();info.textContent="Загружено: "+f.name;
   }catch(e){info.textContent="Не удалось прочитать "+f.name+": "+(e&&e.message||"ошибка")}
 }
 $("file").addEventListener("change",e=>{const f=e.target.files[0];if(f)loadFile(f);e.target.value=""});

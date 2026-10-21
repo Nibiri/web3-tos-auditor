@@ -26,6 +26,9 @@ const riskBlock = (r: Risk, hints: JurisdictionRule[]) =>
   `[${r.id}] check_type=${r.check_type} | risk: ${r.risk}
   question: ${r.prompt}
   if risk found, fix: ${r.output_if_found}` +
+  (r.jurisdiction_dependent
+    ? `\n  jurisdiction-dependent: the verdict depends on the applicable law. If it cannot be determined from the text which law applies, or the answer turns on law you cannot establish, answer insufficient_data and say which law matters, not a categorical conclusion.`
+    : "") +
   (hints.length
     ? `\n  jurisdiction hints (DRAFT, not verified by a lawyer, use as a lens only, never as a legal conclusion): ` +
       hints.map((h) => `[${h.jurisdiction}] ${h.note} (${h.source})`).join(" | ")

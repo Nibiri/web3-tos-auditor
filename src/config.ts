@@ -5,7 +5,7 @@ import crypto from "node:crypto";
 export type CheckType = "presence" | "conflict" | "cross_doc" | "mechanical";
 export interface Risk {
   id: string; topic: string; applies_to: string[]; risk: string; prompt: string;
-  output_if_found: string; check_type: CheckType; evidence: string;
+  output_if_found: string; check_type: CheckType; evidence: string; jurisdiction_dependent: boolean;
 }
 export interface JurisdictionRule { jurisdiction: string; risk_id: string; note: string; source: string; status: string }
 export interface Agent { topic: string; description: string; risk_topics: string[]; watch_for: string }
@@ -53,7 +53,7 @@ export function loadConfig(dir = path.resolve("config")): Config {
     const ct = r.check_type as CheckType;
     if (!["presence", "conflict", "cross_doc", "mechanical"].includes(ct)) throw new Error(`risks.csv ${r.id}: bad check_type ${r.check_type}`);
     return { id: r.id, topic: r.topic, applies_to: r.applies_to.split(/[;,]/).map((s) => s.trim()).filter(Boolean),
-      risk: r.risk, prompt: r.prompt, output_if_found: r.output_if_found, check_type: ct, evidence: r.evidence_in_examples };
+      risk: r.risk, prompt: r.prompt, output_if_found: r.output_if_found, check_type: ct, evidence: r.evidence_in_examples, jurisdiction_dependent: /^(yes|да|true|1)$/i.test(r.jurisdiction_dependent ?? "") };
   });
   const agents: Agent[] = table(topicsCsv).filter((r) => r.topic).map((r) => ({
     topic: r.topic, description: r.description, watch_for: r.watch_for, risk_topics: r.risk_topics.split(";").map((s) => s.trim()).filter(Boolean),

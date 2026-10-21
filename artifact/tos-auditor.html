@@ -21,7 +21,7 @@
 body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--sans);padding-inline:max(16px,env(safe-area-inset-left,0px)) max(16px,env(safe-area-inset-right,0px));padding-block:24px 56px}
 main{max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
 h1{font-size:1.6rem;line-height:1.2;margin:0;font-weight:600;text-wrap:balance}
-h2{font-size:1rem;margin:0;font-weight:600}
+h2{font-size:1rem;margin:0;font-weight:600;text-wrap:balance}
 p{margin:0}
 .sub{color:var(--muted);max-width:65ch}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:12px}
@@ -35,9 +35,9 @@ button:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px so
 .log{font:12px/1.6 var(--mono);color:var(--muted);display:flex;flex-direction:column;gap:2px}
 .log b{color:var(--ink);font-weight:500}
 .card{background:var(--surface);border:1px solid var(--line);border-left-width:4px;border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:12px}
-.card.conflict{border-left-color:var(--bad)} .card.needs_review{border-left-color:var(--warn)} .card.insufficient_data{border-left-color:var(--info)}
+.card.conflict,.card.risk_found{border-left-color:var(--bad)} .card.no_risk{border-left-color:var(--ok)} .card.needs_review{border-left-color:var(--warn)} .card.insufficient_data{border-left-color:var(--info)}
 .badge{font:500 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:3px}
-.badge.conflict{background:var(--bad-bg);color:var(--bad)} .badge.needs_review{background:var(--warn-bg);color:var(--warn)} .badge.insufficient_data{background:var(--info-bg);color:var(--info)}
+.badge.conflict,.badge.risk_found{background:var(--bad-bg);color:var(--bad)} .badge.no_risk{background:var(--ok-bg);color:var(--ok)} .badge.needs_review{background:var(--warn-bg);color:var(--warn)} .badge.insufficient_data{background:var(--info-bg);color:var(--info)}
 .tag{font:12px var(--mono);color:var(--muted)}
 blockquote{margin:0;padding:8px 12px;border:1px solid var(--line);border-radius:4px;background:var(--bg);display:flex;flex-direction:column;gap:4px;min-width:0}
 blockquote q{quotes:none;overflow-wrap:anywhere}
@@ -70,13 +70,13 @@ details summary{cursor:pointer;color:var(--muted)}
     <div class="meta" style="text-align:center">или вставьте текст</div>
     <textarea id="doc" spellcheck="false" placeholder="Вставьте текст соглашения (английский или русский)…"></textarea>
     <div class="row">
-      <button id="run" class="primary" disabled>Найти противоречия</button>
+      <button id="run" class="primary">Проверить документ</button>
       <button id="stop" hidden>Остановить</button>
       <label class="meta" style="margin-left:auto">модель
         <select id="tier" style="font:inherit;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:4px;padding:4px"><option value="default">стандартная</option><option value="complex">мощная</option><option value="quick">быстрая</option></select></label>
     </div>
     <p class="meta" id="docmeta"></p>
-    <p class="note">Запуск тратит ваш лимит Claude: примерно 5–8 запросов на документ. Сканы PDF без текстового слоя не читаются.</p>
+    <p class="note">Проверка идёт по каталогу из 33 рисков и тратит ваш лимит Claude: 6–15 запросов на документ. Сканы PDF распознаются Claude по картинкам страниц (до 30 страниц).</p>
   </section>
 
   <section id="progress" class="panel" hidden aria-live="polite"><h2>Ход работы</h2><div class="log" id="log"></div></section>
@@ -84,10 +84,12 @@ details summary{cursor:pointer;color:var(--muted)}
 </main>
 
 <script>
-const TOPICS = [{"topic": "custody", "description": "Who controls users' assets and keys: custodial vs non-custodial claims, wallet control, pooled addresses, signing keys, who can initiate transfers.", "watch_for": "Claims like 'non-custodial', 'self-custodial', 'exclusive control', 'cannot move your assets without authorization' versus mechanics such as pooled or operational wallets, keys held by the company or its providers, company-initiated transfers, 'temporarily hold' language, freezing or seizing assets."}, {"topic": "withdrawal", "description": "Withdrawal, redemption and exit rights: when and how users can take assets out, delays, suspension, fees, termination effects.", "watch_for": "Promises of withdrawal 'at any time' / 'instantly' / 'unconditionally' versus delay, suspension, queueing, liquidity requirements, discretionary restriction or freezing; termination or suspension clauses that affect access to deposited assets."}, {"topic": "liability", "description": "Liability, warranties, risk allocation and duties of care: what the operator accepts or disclaims responsibility for.", "watch_for": "Absolute 'not responsible' / 'no liability' statements versus assumed duties, guarantees or safekeeping obligations; liability caps versus 'unlimited' or 'full' liability; carve-outs that swallow the rule; disclaimers for losses in assets the operator claims not to control but actually holds."}];
+const RISKS = [{"id": "R-01", "topic": "identity", "applies_to": ["all"], "risk": "Оператор не идентифицирован", "prompt": "Указан ли оператор: полное наименование юрлица или ИП, регистрационный номер, адрес, контакт для юридически значимых уведомлений? Нет ли незаполненных полей-плейсхолдеров на месте этих данных?", "output_if_found": "Указать оператора с реквизитами и адресом для уведомлений.", "check_type": "presence", "jurisdiction_dependent": false}, {"id": "R-02", "topic": "formation", "applies_to": ["all"], "risk": "Не определён порядок акцепта", "prompt": "Как пользователь принимает условия (клик, подключение кошелька, использование)? Указаны ли версия и дата документа, момент заключения договора? Если документ называет себя офертой, есть ли существенные условия и порядок акцепта по применимому праву (см. jurisdiction_rules).", "output_if_found": "Описать способ и момент акцепта, фиксировать версию условий.", "check_type": "presence", "jurisdiction_dependent": true}, {"id": "R-03", "topic": "eligibility", "applies_to": ["all"], "risk": "Не указаны возраст и дееспособность", "prompt": "Есть ли минимальный возраст и требование дееспособности? Есть ли полномочия представителя, если соглашается юрлицо?", "output_if_found": "Добавить требования к возрасту, дееспособности и полномочиям.", "check_type": "presence", "jurisdiction_dependent": false}, {"id": "R-04", "topic": "sanctions", "applies_to": ["all"], "risk": "Нет санкционных и географических ограничений", "prompt": "Указаны ли запрещённые юрисдикции и санкционные списки? Совпадает ли запрет обхода (VPN) с реальными мерами? Если ограничение заявлено, подкреплено ли оно проверкой?", "output_if_found": "Добавить список ограничений и порядок их применения.", "check_type": "presence", "jurisdiction_dependent": true}, {"id": "R-05", "topic": "custody", "applies_to": ["all"], "risk": "Заявленная модель хранения не совпадает с механикой", "prompt": "Какая модель заявлена (custodial / non-custodial)? Сопоставь с механикой: у кого ключи подписи, есть ли пулы или операционные кошельки под управлением оператора, может ли оператор переводить активы без подписи пользователя?", "output_if_found": "Привести заявление и механику в соответствие: исправить формулировку или раскрыть кастодиальную модель, её риски и регуляторный статус.", "check_type": "conflict", "jurisdiction_dependent": false}, {"id": "R-06", "topic": "custody", "applies_to": ["all"], "risk": "Ответственность за ключи не соответствует модели", "prompt": "Возлагается ли на пользователя хранение ключей и seed-фразы там, где ключами фактически управляет оператор?", "output_if_found": "Распределить ответственность за ключи по реальной модели.", "check_type": "conflict", "jurisdiction_dependent": false}, {"id": "R-07", "topic": "withdrawal", "applies_to": ["all"], "risk": "Право на вывод средств подрезано исключениями", "prompt": "Гарантировано ли право вывести средства? Какие условия задержки и приостановки есть (ликвидность, обслуживание, «по усмотрению»)? Согласуются ли они с заявлением о полном контроле пользователя над активами?", "output_if_found": "Ограничить основания и сроки задержки, описать порядок вывода при приостановке.", "check_type": "conflict", "jurisdiction_dependent": false}, {"id": "R-08", "topic": "withdrawal", "applies_to": ["all"], "risk": "Блокировка и заморозка без оснований и уведомления", "prompt": "Указаны ли основания блокировки аккаунта или средств, обязанность уведомить, срок и порядок обжалования?", "output_if_found": "Описать основания, уведомление и порядок обжалования.", "check_type": "presence", "jurisdiction_dependent": false}, {"id": "R-09", "topic": "risk_disclosure", "applies_to": ["all"], "risk": "Рисковые дисклеймеры общие или отсутствуют", "prompt": "Раскрыты ли конкретные риски: волатильность, уязвимости смарт-контрактов, форки, MEV и фронтраннинг, оракулы, потеря ключей, риски третьих протоколов? Или только общая фраза?", "output_if_found": "Добавить раздел с конкретными рисками, применимыми к продукту.", "check_type": "presence", "jurisdiction_dependent": false}, {"id": "R-10", "topic": "warranties", "applies_to": ["all"], "risk": "Нет отказа от гарантий (as is)", "prompt": "Есть ли положение «as is / as available» и отказ от подразумеваемых гарантий? Оговорена ли неотчуждаемость императивных прав?", "output_if_found": "Добавить стандартный отказ от гарантий с оговоркой об императивном праве.", "check_type": "presence", "jurisdiction_dependent": false}, {"id": "R-11", "topic": "liability", "applies_to": ["all"], "risk": "Ограничение ответственности отсутствует, не заполнено или обходится исключениями", "prompt": "Есть ли лимит ответственности (сумма, период)? Заполнены ли значения? Не обнуляют ли исключения («except where liability cannot lawfully be excluded», «кроме случаев…») заявленный лимит в каждом из случаев?", "output_if_found": "Задать лимит и ясный перечень исключений.", "check_type": "conflict", "jurisdiction_dependent": false}, {"id": "R-12", "topic": "liability", "applies_to": ["all"], "risk": "Ответственность отсылает к праву вместо нормы", "prompt": "Определяется ли ответственность содержательно или формулой вида «определяется по применимому праву»?", "output_if_found": "Заменить отсылку конкретными положениями.", "check_type": "presence", "jurisdiction_dependent": false}, {"id": "R-13", "topic": "indemnity", "applies_to": ["all"], "risk": "Возмещение убытков пользователем без границ", "prompt": "Обязан ли пользователь возмещать убытки оператора? Ограничен ли круг случаев, охватывает ли только нарушения пользователя?", "output_if_found": "Сузить и конкретизировать обязанность возмещения.", "check_type": "presence", "jurisdiction_dependent": false}, {"id": "R-14", "topic": "third_party", "applies_to": ["all"], "risk": "Не определена ответственность за сторонние сервисы", "prompt": "Указано ли, что оператор не отвечает за протоколы, валидаторов, провайдеров? Согласуется ли это с заявлением о том, что оператор сам управляет частью инфраструктуры?", "output_if_found": "Разграничить собственную инфраструктуру и сторонние сервисы.", "check_type": "conflict", "jurisdiction_dependent": false}, {"id": "R-15", "topic": "regulatory", "applies_to": ["yield", "custodial"], "risk": "Продукт похож на инвестиционную услугу при заявленном «не совет»", "prompt": "Использует ли документ формулировки вида «investment strategies», «yield», «asset management»? Есть ли при этом положение «не инвестиционная консультация» и не противоречат ли они друг другу?", "output_if_found": "Привести формулировки продукта и отказ от консультации в соответствие, оценить регуляторный статус.", "check_type": "conflict", "jurisdiction_dependent": true}, {"id": "R-16", "topic": "rewards", "applies_to": ["yield"], "risk": "Доходность обещана или не оговорена как оценка", "prompt": "Заявлена ли доходность как прогноз и не гарантируется ли она? Зависит ли она от внешних протоколов?", "output_if_found": "Указать, что ставки ориентировочные и не гарантированы.", "check_type": "presence", "jurisdiction_dependent": false}, {"id": "R-17", "topic": "regulatory", "applies_to": ["all"], "risk": "Регуляторный статус оператора не раскрыт или негативен", "prompt": "Раскрыт ли статус оператора (лицензия, регистрация, отсутствие лицензии)? Что говорит документ о поднадзорности?", "output_if_found": "Раскрыть статус и последствия для пользователя.", "check_type": "presence", "jurisdiction_dependent": true}, {"id": "R-18", "topic": "aml", "applies_to": ["custodial", "yield"], "risk": "AML/KYC не описаны или вынесены за документ", "prompt": "Описаны ли проверки (KYC/AML), права оператора запросить данные? Если политика вынесена в отдельный документ, приложен ли он?", "output_if_found": "Описать процедуры или приложить политику.", "check_type": "cross_doc", "jurisdiction_dependent": true}, {"id": "R-19", "topic": "tax", "applies_to": ["all"], "risk": "Налоги не оговорены", "prompt": "Определено ли, кто отвечает за налоги пользователя, удерживает ли что-то оператор?", "output_if_found": "Добавить положение об ответственности за налоги.", "check_type": "presence", "jurisdiction_dependent": false}, {"id": "R-20", "topic": "fees", "applies_to": ["all"], "risk": "Комиссии не раскрыты или меняются без порядка", "prompt": "Раскрыты ли комиссии платформы и сетевые комиссии? Как они меняются и как сообщается об изменении?", "output_if_found": "Раскрыть структуру комиссий и порядок их изменения.", "check_type": "presence", "jurisdiction_dependent": false}, {"id": "R-21", "topic": "amendments", "applies_to": ["all"], "risk": "Односторонние изменения условий без уведомления", "prompt": "Может ли оператор изменить условия? С какого момента, как уведомляет, есть ли право отказаться и выйти?", "output_if_found": "Ввести срок уведомления и право отказа до вступления в силу.", "check_type": "presence", "jurisdiction_dependent": false}, {"id": "R-22", "topic": "termination", "applies_to": ["all"], "risk": "Прекращение и приостановка без порядка и последствий для активов", "prompt": "Указаны ли основания прекращения доступа и что происходит с активами пользователя после этого?", "output_if_found": "Описать основания, порядок и возврат активов.", "check_type": "conflict", "jurisdiction_dependent": false}, {"id": "R-23", "topic": "termination", "applies_to": ["all"], "risk": "Закрытие продукта без плана возврата активов", "prompt": "Может ли оператор прекратить работу платформы? Как возвращаются активы, в какие сроки?", "output_if_found": "Описать порядок вывода активов при закрытии.", "check_type": "presence", "jurisdiction_dependent": false}, {"id": "R-24", "topic": "governing_law", "applies_to": ["all"], "risk": "Не определено применимое право", "prompt": "Указано ли право и не противоречит ли выбор права месту оператора и императивным нормам для потребителей?", "output_if_found": "Указать применимое право.", "check_type": "presence", "jurisdiction_dependent": true}, {"id": "R-25", "topic": "disputes", "applies_to": ["all"], "risk": "Не определён порядок разрешения споров", "prompt": "Указан ли форум (суд или арбитраж, место, язык)? Согласован ли он с выбранным правом? Не является ли формулировка необязательной («may seek relief»)?", "output_if_found": "Определить форум и порядок обращения.", "check_type": "conflict", "jurisdiction_dependent": false}, {"id": "R-26", "topic": "disputes", "applies_to": ["all"], "risk": "Отказ от коллективных исков и арбитраж без права выхода", "prompt": "Есть ли отказ от коллективных исков или обязательный арбитраж? Есть ли право отказаться (opt-out)?", "output_if_found": "Оценить допустимость в юрисдикции пользователя, добавить opt-out.", "check_type": "presence", "jurisdiction_dependent": true}, {"id": "R-27", "topic": "consumer", "applies_to": ["all"], "risk": "Нет оговорки о правах потребителей", "prompt": "Есть ли оговорка, что условия не ограничивают императивные права потребителей?", "output_if_found": "Добавить оговорку об императивных правах.", "check_type": "presence", "jurisdiction_dependent": true}, {"id": "R-28", "topic": "privacy", "applies_to": ["all"], "risk": "Персональные данные не урегулированы", "prompt": "Есть ли ссылка на политику конфиденциальности? Указаны ли цели, сроки хранения, передача за рубеж?", "output_if_found": "Добавить ссылку и раздел о данных.", "check_type": "cross_doc", "jurisdiction_dependent": true}, {"id": "R-29", "topic": "ip", "applies_to": ["all"], "risk": "Права и лицензия не определены", "prompt": "Определены ли права оператора и лицензия пользователю? Учтены ли лицензии open source?", "output_if_found": "Описать права и объём лицензии.", "check_type": "presence", "jurisdiction_dependent": false}, {"id": "R-30", "topic": "completeness", "applies_to": ["all"], "risk": "В документе остались незаполненные поля", "prompt": "Есть ли в тексте плейсхолдеры вида [..] или «TBD»? Проверка кодом.", "output_if_found": "Заполнить поля или удалить связанные положения.", "check_type": "mechanical", "jurisdiction_dependent": false}, {"id": "R-31", "topic": "completeness", "applies_to": ["all"], "risk": "Документ ссылается на недоступные документы", "prompt": "Приведён ли текст документов, на которые есть ссылки (политики, приложения)? Если нет, статус insufficient_data.", "output_if_found": "Приложить документы или указать их отдельно.", "check_type": "cross_doc", "jurisdiction_dependent": false}, {"id": "R-32", "topic": "definitions", "applies_to": ["all"], "risk": "Термины определены и используются по-разному", "prompt": "Совпадает ли использование определённых терминов с их определениями по всему документу?", "output_if_found": "Привести термины к единому значению.", "check_type": "conflict", "jurisdiction_dependent": false}, {"id": "R-33", "topic": "general", "applies_to": ["all"], "risk": "Нет общих положений", "prompt": "Есть ли положения об отдельности (severability), полноте соглашения, языке и переуступке?", "output_if_found": "Добавить общие положения.", "check_type": "presence", "jurisdiction_dependent": false}];
+const AGENTS = [{"topic": "custody_control", "description": "Who holds assets and keys, how users withdraw, what happens on suspension or shutdown, who is responsible for third-party infrastructure, and whether defined terms are used consistently.", "risk_topics": ["custody", "withdrawal", "termination", "third_party", "definitions"], "watch_for": "Declared custody model versus mechanics (pooled or operational wallets, keys held by the operator, operator-initiated transfers). Withdrawal promises versus delays and suspension. Consequences for user assets after termination."}, {"topic": "liability_risks", "description": "Liability limits, warranty disclaimers, indemnity, risk disclosure, yield statements, regulatory status of the operator.", "risk_topics": ["liability", "risk_disclosure", "warranties", "indemnity", "rewards", "regulatory"], "watch_for": "Absolute disclaimers versus duties the operator actually assumes. Limits that are blank or cancelled by carve-outs. Product wording that sounds like investment services versus a no-advice disclaimer."}, {"topic": "compliance", "description": "Sanctions and geographic limits, AML/KYC, taxes, personal data, consumer rights, and references to documents that are not provided.", "risk_topics": ["sanctions", "aml", "tax", "privacy", "consumer", "completeness"], "watch_for": "Declared restrictions versus real measures. Policies referenced but not attached. Missing privacy terms."}, {"topic": "contract_terms", "description": "Operator identity, how the contract is accepted, eligibility, fees, amendments, governing law, dispute resolution, intellectual property, general provisions.", "risk_topics": ["identity", "formation", "eligibility", "fees", "amendments", "governing_law", "disputes", "ip", "general"], "watch_for": "Placeholders instead of operator details, vague acceptance, unilateral changes without notice, a chosen law without a forum, optional wording such as 'may seek relief'."}];
+const JRULES = [{"jurisdiction": "RU", "risk_id": "R-02", "note": "Публичная оферта и акцепт: проверить соответствие документа требованиям к оферте и акцепту.", "source": "ГК РФ ст. 437, 438"}, {"jurisdiction": "RU", "risk_id": "R-28", "note": "Требования к локализации и обработке персональных данных граждан РФ; передача за рубеж.", "source": "152-ФЗ"}, {"jurisdiction": "EU/EEA", "risk_id": "R-28", "note": "Основание обработки, сроки хранения, механизм трансграничной передачи, права субъекта данных.", "source": "GDPR"}, {"jurisdiction": "UK", "risk_id": "R-28", "note": "То же для пользователей из Великобритании.", "source": "UK GDPR"}, {"jurisdiction": "EU/EEA", "risk_id": "R-27", "note": "Императивные нормы о защите потребителей не могут быть исключены условиями; проверить оговорку и допустимость арбитража для потребителей.", "source": "Директивы ЕС о правах потребителей, право страны пользователя"}, {"jurisdiction": "EU/EEA", "risk_id": "R-17", "note": "Оценить, оказывает ли оператор услуги, подпадающие под регулирование криптоактивов, и не противоречит ли этому заявление об отсутствии надзора.", "source": "MiCA"}, {"jurisdiction": "US", "risk_id": "R-26", "note": "Допустимость арбитража и отказа от коллективных исков зависит от штата; проверить opt-out и формулировку.", "source": "FAA, право штата"}, {"jurisdiction": "US", "risk_id": "R-04", "note": "Санкционные ограничения: сверка с актуальными списками, согласованность с реальными мерами.", "source": "OFAC"}, {"jurisdiction": "US", "risk_id": "R-17", "note": "Оценить регуляторный статус услуг (ценные бумаги, деривативы, money transmission).", "source": "SEC, CFTC, FinCEN: определить по продукту"}, {"jurisdiction": "ANY", "risk_id": "R-24", "note": "Если право и место оператора различаются, оценить, не нарушает ли выбор права императивные нормы страны пользователя.", "source": "определить по контексту"}];
 const TYPES_MD = "# Conflict types\n\nA conflict is always a pair of norms inside the same document that cannot both be applied to the same situation. Every conflict needs two quotes from the main text of clauses.\n\n## claim_vs_mechanic\n### Definition\nA general claim or promise (for example \"non-custodial\", \"you keep exclusive control\", \"withdraw at any time\") is contradicted by a concrete mechanism described elsewhere in the document (for example pooled addresses, keys held by the company, company-initiated transfers, mandatory delays).\n### Example\nClause A: \"The Service is fully non-custodial and users retain exclusive control of their assets.\"\nClause B: \"Deposited assets are transferred to wallets whose signing keys are held by the Company.\"\n### Не считать конфликтом\n- Marketing or TL;DR summaries that simplify the main text (quote the main clause, never the TL;DR).\n- A claim that is limited to a specific product or module when the mechanic belongs to a different product.\n- Mechanics that apply only to an optional, explicitly separate feature that the claim expressly excludes.\n\n## claim_vs_exception\n### Definition\nA rule stated in absolute terms is cut down by an exception or carve-out in another clause so that the absolute wording becomes false or meaningless.\n### Example\nClause A: \"We never restrict withdrawals.\"\nClause B: \"We may suspend withdrawals at our discretion.\"\n### Не считать конфликтом\n- Exceptions that are announced in the rule itself (\"except as provided in Section 9\").\n- Standard legal carve-outs such as \"to the extent permitted by law\" or \"except where liability cannot lawfully be excluded\".\n- A rule and an exception that apply to clearly different situations.\n\n## circular\n### Definition\nTwo or more clauses refer to each other (or to a definition that refers back) so that the obligation or the rights can never be determined.\n### Example\nClause A: \"Fees are as set out in the Fee Policy.\"\nClause B (Fee Policy): \"Fees are as set out in the Terms of Service.\"\n### Не считать конфликтом\n- Ordinary cross-references that end in a concrete rule.\n- Incorporation by reference of an external document that is simply not provided (that is insufficient_data, not circular).\n\n## definition_drift\n### Definition\nThe same defined term is used with different meanings in different clauses, or a term is defined one way and used in a way that does not fit its definition, and the difference changes the legal outcome.\n### Example\nDefinition: \"'User' means a person over 18.\" Later: \"Users under 16 may use the Service with parental consent.\"\n### Не считать конфликтом\n- Stylistic variation between synonyms with no legal effect.\n- Terms deliberately scoped (\"for the purposes of this Section, ...\").\n";
 const TYPES = ["claim_vs_mechanic", "claim_vs_exception", "circular", "definition_drift"];
-const ROLES = ["claim","mechanic","exception","definition","reference"];
+const ROLES = ["claim","mechanic","exception","definition","reference","provision"];
 
 /* ---------- text normalisation + parsing (port of the terminal pipeline) ---------- */
 function norm(s){let t="",m=[],i=0;for(const ch of s){for(const c of ch.normalize("NFKC").toLowerCase()){if(/[\p{L}\p{N}]/u.test(c)){t+=c;m.push(i)}}i+=ch.length}return{t,m}}
@@ -158,46 +160,207 @@ function makeTools(secs,log){
   ];
 }
 
-/* ---------- prompts (built from the embedded copies of config/) ---------- */
-const RULES=`Hard rules:
-1. Do not invent violations. A conflict needs TWO quotes from the document that cannot both be applied to the same situation. If you cannot quote both sides, there is no finding. An empty list is a normal, good outcome.
-2. Quote the main text of the clause, never a "TL;DR" summary. Copy quotes verbatim from read_section output (one or two sentences) and run verify_quote on EVERY quote. Drop any finding whose quotes do not verify.
-3. If deciding requires a document that is not provided (for example a Privacy Policy), return status "insufficient_data" with the quote that references it.
-4. Do not report differences that disappear on a reasonable reading, standard legal carve-outs ("to the extent permitted by law"), claims limited to a different product, or anything under "Не считать конфликтом" for the type.
-5. One finding = ONE pair of clauses: exactly two quotes (the strongest claim and the strongest counter-clause). Do not report the same tension several times. But be exhaustive over DISTINCT points: a promise contradicted by two different mechanisms (for example "where assets are held / who holds keys" and "who may initiate transfers") gives two findings.
-6. Each finding uses exactly one conflict type: ${TYPES.join(", ")}. Quote roles: ${ROLES.join(", ")}.`;
-const TOOLS_TXT=`Tools: list_sections(), read_section(id), search_document(q), verify_quote(text). The document is only accessible through them.`;
-const FORMAT=`Reply with ONLY one JSON object: {"findings":[{"type":"<type>","status":"conflict"|"insufficient_data","quotes":[{"text":"<verbatim>","role":"claim|mechanic|exception|definition|reference"}],"explanation":"...","suggestedFix":"..."}]}. Write explanation and suggestedFix in Russian; quotes stay in the document's language. No other text.`;
-const topicPrompt=t=>`You are a legal-contradiction analyst for Web3 Terms of Service. You work ONLY on the topic "${t.topic}".\nScope: ${t.description}\nWatch for: ${t.watch_for}\n\n${TOOLS_TXT}\nMethod: call list_sections, use search_document and read_section to read every clause relevant to your topic (whole sections), then compare clauses against each other.\n\n${RULES}\n\nCONFLICT TYPES:\n${TYPES_MD}\n\n${FORMAT}`;
-const verifierPrompt=(c)=>`You are the verifier of a candidate contradiction in a Web3 Terms of Service. Try to RECONCILE the two norms: find a reasonable, text-based reading under which both hold (different scope or product, one clause qualifying the other, standard carve-out, a defined term). Use the tools to read surrounding clauses and definitions first.\n- reconcilable=true only if you can state a concrete reading under which both quotes hold; put it in reconcileNote.\n- reconcilable=false if no honest reading makes both hold; in reconcileNote list the reconciliation attempts and why each fails.\nDo not assume facts that are not in the document.\n\n${TOOLS_TXT}\n\nTopic: ${c.topic}; type: ${c.type}\nAnalyst explanation: ${c.explanation}\nQuotes:\n${c.quotes.map((q,i)=>`${i+1}. [${q.role}] (${q.loc}) "${q.text}"`).join("\n")}\n\nReply with ONLY JSON: {"reconcilable":true|false,"reconcileNote":"<in Russian>"}`;
+/* ---------- prompts (embedded copies of config/*.csv, config/conflict-types.md) ---------- */
+const lang="Russian";
+const TOOLS_TXT=`Tools (the document is read-only and reachable only through them): list_sections(), read_section(id), search_document(q), verify_quote(text).`;
+const profilePrompt=()=>`You classify a Web3 Terms of Service before it is checked. ${TOOLS_TXT}
+Skim the document and answer:
+- tags: "custodial" if the operator holds or controls user assets or keys, or the text says so, or the mechanics show it (pooled or operational wallets, keys held by the operator), even if the text claims otherwise; "yield" if the product offers yield, rewards, staking, liquidity strategies or asset management. Both, one or none.
+- projectType: one short phrase in ${lang}.
+- jurisdiction: governing law and operator's place if stated, else "unknown".
+- jurisdictions: which of RU, EU/EEA, UK, US the document connects to (governing law, operator, targeted users, referenced statutes). Empty if none.
+- operator: operator name or "not stated".
+Do not guess beyond the text. Reply with ONLY a JSON object: {"tags":[],"projectType":"","jurisdiction":"","jurisdictions":[],"operator":""}`;
+const hintsFor=(id,prof)=>JRULES.filter(j=>j.risk_id===id&&(j.jurisdiction==="ANY"||prof.jurisdictions.includes(j.jurisdiction)));
+const riskBlock=(r,prof)=>{const h=hintsFor(r.id,prof);return `[${r.id}] check_type=${r.check_type} | risk: ${r.risk}
+  question: ${r.prompt}
+  if risk found, fix: ${r.output_if_found}`+(r.jurisdiction_dependent?`\n  jurisdiction-dependent: the verdict depends on the applicable law. If it cannot be determined from the text which law applies, answer insufficient_data and say which law matters, not a categorical conclusion.`:"")+(h.length?`\n  jurisdiction hints (DRAFT, not verified by a lawyer, a lens only, never a legal conclusion): `+h.map(x=>`[${x.jurisdiction}] ${x.note} (${x.source})`).join(" | "):"")};
+const agentPrompt=(ag,risks,prof)=>`You are a legal analyst checking a Web3 Terms of Service against a list of risks. Your area: "${ag.topic}". ${ag.description}
+Project profile: type = ${prof.projectType}; tags = [${prof.tags.join(", ")||"none"}]; jurisdiction = ${prof.jurisdiction}; operator = ${prof.operator}.
+Take Web3 specifics, the project type and the applicable jurisdiction into account where they are known.
+Hints: ${ag.watch_for}
 
-/* ---------- UI ---------- */
+${TOOLS_TXT}
+
+For EVERY risk below, do this:
+1. Check whether the relevant provision exists, judged by its meaning, not by heading or numbering.
+2. Give an exact quote from the main text of the clause (never a TL;DR). If the provision is absent, say so and set provisionFound=false. Run verify_quote on every quote and drop any that fail.
+3. Set the status:
+   - risk_found: the risk is present (presence check: the provision is missing, empty, a placeholder or clearly inadequate; conflict check: see below).
+   - no_risk: the provision exists and adequately covers the question, with no contradiction.
+   - insufficient_data: the text does not allow a confident answer, or the answer depends on a document that was not provided.
+4. Explain the risk briefly and propose a fix (suggestedFix empty unless risk_found). Write explanation and suggestedFix in ${lang}; quotes stay in the document's language.
+
+Rules by check_type:
+- presence: the required provision must exist AND answer every part of the question. If any part is unanswered (no forum named, no limit amount, amount is a placeholder, only a cross-reference to "applicable law", optional wording such as "may seek relief"), that is risk_found. Missing entirely = risk_found. no_risk only when every part is answered by a quoted clause.
+- conflict: the risk is either (a) a CONTRADICTION: two clauses that cannot both be applied to the same situation. Then you need TWO verified quotes and one conflictType from the list below. Or (b) a GAP or DEFECT named in the question (no limit amount, unfilled value, an exception that cancels the limit, optional wording instead of a binding forum, an absent counterpart clause). Then answer risk_found with conflictType "none", quote the clause that shows the gap (or provisionFound=false if entirely absent).
+- cross_doc: if the text relies on a document that is not provided (policy, appendix, another agreement) answer insufficient_data and quote the reference. If nothing is referenced, answer no_risk.
+Hard rules: do not invent violations or legal consequences. Do not draw categorical conclusions when information is missing; use insufficient_data. Jurisdiction hints are drafts for a lawyer, never state them as law. Return exactly one result per risk id.
+
+CONFLICT TYPES:
+${TYPES_MD}
+
+RISKS TO CHECK:
+${risks.map(r=>riskBlock(r,prof)).join("\n\n")}
+
+Reply with ONLY a JSON object: {"results":[{"riskId":"R-00","status":"risk_found"|"no_risk"|"insufficient_data","provisionFound":true,"conflictType":"none"|"<type>","quotes":[{"text":"<verbatim>","role":"claim|mechanic|exception|definition|reference|provision"}],"explanation":"...","suggestedFix":"..."}]}`;
+const verifierPrompt=(c)=>`You are the verifier of a candidate contradiction in a Web3 Terms of Service. Try to RECONCILE the two norms: find a reasonable, text-based reading under which both can hold (different scope or product, one clause qualifying the other, a standard carve-out, a defined term). Read the surrounding clauses first.
+${TOOLS_TXT}
+- reconcilable=true only if you can state a concrete reading under which both quotes hold; put it in reconcileNote.
+- reconcilable=false if no honest reading makes both hold; in reconcileNote list the attempts and why each fails.
+A reconciliation is NOT valid if it (a) requires ignoring an absolute term ("exclusive", "at all times", "cannot", "fully", "never", "all"), (b) assumes a fact, scope or product split the text does not state, or (c) only shows the clauses could apply to different situations while the text gives no such separation. A permission ("may") covering the same act as an absolute prohibition does contradict it. Write reconcileNote in ${lang}.
+
+Risk ${c.riskId}: ${c.risk}
+Analyst explanation: ${c.explanation}
+Quotes:
+${c.quotes.map((q,i)=>`${i+1}. [${q.role}] (${q.location}) "${q.text}"`).join("\n")}
+
+Reply with ONLY JSON: {"reconcilable":true|false,"reconcileNote":"..."}`;
+
+/* ---------- run ---------- */
 const $=id=>document.getElementById(id);
 const docEl=$("doc"),runEl=$("run"),stopEl=$("stop"),logEl=$("log"),outEl=$("out");
-let sample=null,ctl=null,result=null;
+let sample=null,ctl=null,result=null,lastResults=[];
 const esc=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
-function updMeta(){const n=docEl.value.trim().length;let secs=n?parse(docEl.value).length:0;
-  $("docmeta").textContent=n?`${n.toLocaleString("ru")} символов · разделов найдено: ${secs}`:"";runEl.disabled=!sample||n<200}
+function updMeta(){const n=docEl.value.trim().length;const secs=n?parse(docEl.value).length:0;
+  $("docmeta").textContent=n?`${n.toLocaleString("ru")} символов · разделов найдено: ${secs}`:"Загрузите файл или вставьте текст, затем нажмите кнопку."}
 docEl.addEventListener("input",updMeta);
 stopEl.onclick=()=>ctl&&ctl.abort();
+function addLog(kind,msg){const d=document.createElement("div");d.innerHTML=(kind==="tool"?"  · ":"<b>▸ </b>")+esc(msg);
+  if(kind==="tool"){const prev=logEl.querySelector("[data-live]");if(prev)prev.remove();d.dataset.live=1}
+  logEl.append(d);if(logEl.children.length>60)logEl.firstChild.remove()}
+const errCopy={not_granted:"Вы не разрешили использовать Claude для этого артефакта.",rate_limited:"Достигнут лимит запросов, попробуйте позже.",invalid_json:"Модель вернула ответ не в формате JSON. Запустите ещё раз.",upstream_error:"Временная ошибка сервиса. Запустите ещё раз.",tools_unavailable:"В этом окне просмотра инструменты недоступны."};
+async function ask(prompt,tools,tier,label){
+  try{return await sample.json(prompt,{tools,modelTier:tier,signal:ctl.signal})}
+  catch(e){if(e&&e.code==="cancelled")throw e;throw Object.assign(new Error(label+": "+(errCopy[e&&e.code]||(e&&e.message)||"ошибка")),{code:e&&e.code})}
+}
+(async()=>{try{sample=await claude.use("sample")}catch(e){sample=null}
+  if(!sample){const m=document.createElement("p");m.className="err";m.id="nosample";m.textContent="Анализ здесь не запускается: артефакт работает через ваш аккаунт Claude. Откройте ссылку, войдя в claude.ai под своей учётной записью (если доступ дали по приглашению, примите его), либо попросите владельца запустить проверку. Загрузка файла и разбор на разделы работают и без входа.";$("docmeta").after(m)}
+  updMeta()})();
 
-/* ---------- file loading: PDF (pdf.js), DOCX (mammoth), TXT/MD ---------- */
-async function pdfText(buf){
+const PLACEHOLDER=/\[[^\]\n]{2,80}\]|\bTBD\b|_{4,}/g;
+function placeholders(secs){const out=[],seen=new Set();
+  for(const s of secs)for(const para of s.text.split("\n\n"))for(const m of para.matchAll(PLACEHOLDER)){
+    const f=m[0];if(/https?:|www\.|^\[\d+\]$|^\[[a-z]\]$/i.test(f))continue;if(seen.has(f.toLowerCase()))continue;seen.add(f.toLowerCase());
+    const at=m.index||0,win=para.slice(Math.max(0,at-60),at+f.length+60).trim(),v=verifyQuote(secs,win);
+    out.push(v.ok?{text:v.text,location:v.loc,role:"reference"}:{text:f,location:s.title,role:"reference"})}
+  return out}
+const STATUS_RU={risk_found:"Риск выявлен",no_risk:"Риск не выявлен",insufficient_data:"Недостаточно данных"};
+const mkRes=(r,p)=>({riskId:r.id,topic:r.topic,checkType:r.check_type,risk:r.risk,status:p.status,statusRu:STATUS_RU[p.status],provisionFound:false,conflictType:null,quotes:[],explanation:"",reconcileNote:"",suggestedFix:"",needsReview:false,jurisdictionDependent:r.jurisdiction_dependent,...p});
+function finalize(secs,r,a,dropped){
+  const quotes=[];
+  for(const q of (a.quotes||[])){const v=verifyQuote(secs,String(q.text||""));
+    if(!v.ok){dropped.push({riskId:r.id,reason:v.reason+`: «${String(q.text||"").slice(0,80)}»`});continue}
+    quotes.push({text:v.text,location:v.loc,role:ROLES.includes(q.role)?q.role:"provision"})}
+  const distinct=new Set(quotes.map(q=>nt(q.text))).size;
+  const ct=a.conflictType&&a.conflictType!=="none"&&TYPES.includes(a.conflictType)?a.conflictType:null;
+  const base={provisionFound:!!a.provisionFound,conflictType:ct,quotes,explanation:String(a.explanation||""),suggestedFix:String(a.suggestedFix||"")};
+  const down=why=>mkRes(r,{...base,status:"insufficient_data",explanation:base.explanation+` [Проверка кодом: ${why}]`,suggestedFix:""});
+  const contra=r.check_type==="conflict"&&ct!==null;
+  if(contra&&a.status==="risk_found"&&distinct<2)return down("не найдены две подтверждённые цитаты, конфликт не принят");
+  if(a.status==="no_risk"&&base.provisionFound&&distinct<1)return down("положение не подтверждено цитатой");
+  if(a.status==="risk_found"&&base.provisionFound&&!contra&&distinct<1)return down("положение не подтверждено цитатой");
+  return mkRes(r,{...base,status:["risk_found","no_risk","insufficient_data"].includes(a.status)?a.status:"insufficient_data"});
+}
+
+runEl.onclick=async()=>{
+  if(!sample){$("docmeta").textContent="Запуск Claude недоступен в этом окне (см. сообщение выше).";return}
+  if(docEl.value.trim().length<200){$("docmeta").textContent="Сначала загрузите файл или вставьте текст соглашения (нужно хотя бы пара абзацев).";return}
+  const secs=parse(docEl.value);
+  if(secs.length<2){$("docmeta").textContent="Не удалось выделить разделы: нужны нумерованные заголовки.";return}
+  ctl=new AbortController();runEl.disabled=true;stopEl.hidden=false;outEl.hidden=true;outEl.innerHTML="";logEl.innerHTML="";$("progress").hidden=false;
+  const tier=$("tier").value,dropped=[],t0=Date.now(),log=(k,m)=>addLog(k,m);
+  try{
+    log("step",`Разделов: ${secs.length}. Определяю тип проекта и юрисдикцию`);
+    const raw=await ask(profilePrompt(),makeTools(secs,log),"quick","профиль");
+    const prof={tags:(raw.tags||[]).filter(t=>t==="custodial"||t==="yield"),projectType:String(raw.projectType||""),jurisdiction:String(raw.jurisdiction||"unknown"),jurisdictions:(raw.jurisdictions||[]).filter(j=>["RU","EU/EEA","UK","US"].includes(j)),operator:String(raw.operator||"not stated")};
+    log("step",`Тип: ${prof.projectType||"не определён"} · теги: ${prof.tags.join(", ")||"нет"} · право: ${prof.jurisdiction}`);
+    const active=RISKS.filter(r=>r.applies_to.includes("all")||r.applies_to.some(t=>prof.tags.includes(t)));
+    const skipped=RISKS.length-active.length,out=new Map();
+    for(const r of active.filter(x=>x.check_type==="mechanical")){
+      const ph=placeholders(secs);
+      out.set(r.id,ph.length?mkRes(r,{status:"risk_found",provisionFound:true,quotes:ph.slice(0,6),explanation:`В тексте найдены незаполненные поля (${ph.length}).`,suggestedFix:r.output_if_found}):mkRes(r,{status:"no_risk",explanation:"Незаполненных полей не найдено."}))}
+    log("step",`Проверок: ${active.length}${skipped?` (пропущено по типу проекта: ${skipped})`:""}. Запускаю ${AGENTS.length} агентов`);
+    await Promise.all(AGENTS.map(async ag=>{
+      const risks=active.filter(r=>r.check_type!=="mechanical"&&ag.risk_topics.includes(r.topic));if(!risks.length)return;
+      const res=await ask(agentPrompt(ag,risks,prof),makeTools(secs,log),tier,"агент «"+ag.topic+"»");
+      const list=Array.isArray(res&&res.results)?res.results:[];
+      for(const r of risks){const a=list.find(x=>x&&x.riskId===r.id);
+        out.set(r.id,a?finalize(secs,r,a,dropped):mkRes(r,{status:"insufficient_data",explanation:"Агент не вернул ответ по этой проверке."}))}
+      log("step",`Готово: ${ag.topic} (${risks.length} проверок)`)}));
+    const toVerify=[...out.values()].filter(x=>x.checkType==="conflict"&&x.status==="risk_found"&&x.conflictType);
+    if(toVerify.length)log("step",`Верификатор проверяет противоречий: ${toVerify.length}`);
+    await Promise.all(toVerify.map(async c=>{
+      const v=await ask(verifierPrompt(c),makeTools(secs,log),tier,"верификатор "+c.riskId);
+      c.reconcileNote=String(v&&v.reconcileNote||"");
+      if(v&&v.reconcilable){c.status="insufficient_data";c.statusRu=STATUS_RU.insufficient_data;c.needsReview=true}
+      log("step",`${c.riskId}: ${v&&v.reconcilable?"нормы можно согласовать, нужна проверка юриста":"противоречие подтверждено"}`)}));
+    const results=RISKS.map(r=>out.get(r.id)).filter(Boolean);
+    result={profile:prof,results,dropped};lastResults=results;
+    render(results,prof,dropped,((Date.now()-t0)/1000).toFixed(0));
+    log("step","Готово");
+  }catch(e){
+    if(e&&e.code==="cancelled")log("step","Остановлено");
+    else{const d=document.createElement("div");d.className="err";d.textContent=(e&&e.message)||"Ошибка";logEl.append(d)}
+  }finally{runEl.disabled=false;stopEl.hidden=true;updMeta()}
+};
+
+const ROLE_RU={claim:"заявление",mechanic:"механизм",exception:"исключение",definition:"определение",reference:"отсылка",provision:"положение"};
+let filter="all";
+function render(rs,prof,dropped,sec){
+  const n=s=>rs.filter(c=>c.status===s).length;
+  let h=`<div class="panel"><div class="summary"><div><strong>${n("risk_found")}</strong> <span class="note">риск выявлен</span></div><div><strong>${n("no_risk")}</strong> <span class="note">риск не выявлен</span></div><div><strong>${n("insufficient_data")}</strong> <span class="note">недостаточно данных</span></div><span class="meta" style="margin-left:auto">${sec} с</span></div>
+  <p class="note">${esc(prof.projectType||"Тип проекта не определён")} · право: ${esc(prof.jurisdiction)} · оператор: ${esc(prof.operator)}</p>
+  <div class="row" id="filters"><button data-f="all">Все</button><button data-f="risk_found">Риск выявлен</button><button data-f="insufficient_data">Недостаточно данных</button><button data-f="no_risk">Риск не выявлен</button><span style="margin-left:auto"></span><button id="copy">Скопировать JSON</button><span class="meta" id="copied"></span></div></div><div id="cards" style="display:flex;flex-direction:column;gap:16px"></div>`;
+  if(dropped.length)h+=`<details class="panel"><summary>Отброшенные цитаты: ${dropped.length}</summary><div class="dropped">${dropped.map(d=>`<div>[${esc(d.riskId)}] ${esc(d.reason)}</div>`).join("")}</div></details>`;
+  outEl.innerHTML=h;outEl.hidden=false;drawCards();
+  $("filters").querySelectorAll("button[data-f]").forEach(b=>b.onclick=()=>{filter=b.dataset.f;drawCards()});
+  $("copy").onclick=async()=>{try{await navigator.clipboard.writeText(JSON.stringify(result,null,2));$("copied").textContent="Скопировано"}catch{$("copied").textContent="Не удалось скопировать"}};
+}
+function drawCards(){
+  const order={risk_found:0,insufficient_data:1,no_risk:2};
+  const rs=lastResults.filter(c=>filter==="all"||c.status===filter).sort((a,b)=>order[a.status]-order[b.status]);
+  $("cards").innerHTML=rs.map(c=>`<article class="card ${c.status}"><div class="row"><span class="badge ${c.status}">${c.statusRu}</span><span class="tag">${c.riskId} · ${esc(c.topic)}${c.conflictType?" · "+esc(c.conflictType):""}${c.jurisdictionDependent?" · зависит от права":""}</span></div>
+    <h2>${esc(c.risk)}</h2>
+    ${c.quotes.length?`<div class="vs">${c.quotes.map(q=>`<blockquote><span class="lbl">${ROLE_RU[q.role]||q.role}</span><q>${esc(q.text)}</q><span class="loc">${esc(q.location)}</span></blockquote>`).join("")}</div>`:`<p class="note">${c.provisionFound?"Подтверждённой цитаты нет.":"Положения в документе нет."}</p>`}
+    <p>${esc(c.explanation)}</p>
+    ${c.needsReview?`<p class="note">Нормы можно согласовать, поэтому вывод не категоричен: нужна проверка юриста.</p>`:""}
+    ${c.reconcileNote?`<details><summary>Попытка примирить нормы</summary><p style="white-space:pre-line;margin-top:8px">${esc(c.reconcileNote)}</p></details>`:""}
+    ${c.suggestedFix?`<p><span class="lbl">Как исправить</span><br>${esc(c.suggestedFix)}</p>`:""}</article>`).join("")||`<div class="panel"><p class="note">Нет проверок с таким статусом.</p></div>`;
+}
+
+/* ---------- file loading: PDF (pdf.js, OCR for scans), DOCX (mammoth), TXT/MD ---------- */
+async function ocrPages(pdf,info){
+  if(!sample)throw new Error("это скан, а для распознавания нужен вход в claude.ai (см. сообщение ниже)");
+  const lim=await sample.limits().catch(()=>null);
+  if(!lim||!lim.images)throw new Error("распознавание сканов недоступно в этом окне");
+  const total=Math.min(pdf.numPages,30),parts=[];
+  for(let p=1;p<=total;p++){
+    info.textContent=`Распознаю скан: страница ${p} из ${total}…`;
+    const page=await pdf.getPage(p),vp=page.getViewport({scale:1.6}),cv=document.createElement("canvas");
+    cv.width=vp.width;cv.height=vp.height;await page.render({canvasContext:cv.getContext("2d"),viewport:vp}).promise;
+    const blob=await new Promise(r=>cv.toBlob(r,"image/jpeg",0.85));
+    const r=await sample("Transcribe ALL text on this page image exactly as written, in reading order, one paragraph per line. Keep clause numbers and headings. Output only the text, no commentary.",{images:blob,modelTier:"quick"});
+    parts.push(r.text)}
+  return parts.join("\n\n");
+}
+async function pdfText(buf,info){
   pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
   const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise;let out="";
   for(let p=1;p<=pdf.numPages;p++){const c=await (await pdf.getPage(p)).getTextContent();
     for(const it of c.items){out+=it.str;out+=it.hasEOL?"\n":""}out+="\n"}
+  if(out.replace(/\s+/g,"").length/pdf.numPages<80)return await ocrPages(pdf,info);
   return out;
 }
 async function loadFile(f){
   const info=$("fileinfo");info.textContent="Читаю "+f.name+"…";
   try{
     const name=f.name.toLowerCase();let text;
-    if(name.endsWith(".pdf")){if(!window.pdfjsLib)throw new Error("библиотека PDF не загрузилась");text=await pdfText(await f.arrayBuffer())}
+    if(name.endsWith(".pdf")){if(!window.pdfjsLib)throw new Error("библиотека PDF не загрузилась");text=await pdfText(await f.arrayBuffer(),info)}
     else if(name.endsWith(".docx")){if(!window.mammoth)throw new Error("библиотека DOCX не загрузилась");text=(await mammoth.extractRawText({arrayBuffer:await f.arrayBuffer()})).value}
     else text=await f.text();
     text=text.replace(/\r\n?/g,"\n").trim();
-    if(text.length<200)throw new Error("в файле почти нет текста (возможно, это скан)");
+    if(text.length<200)throw new Error("в файле почти нет текста");
     docEl.value=text;updMeta();info.textContent="Загружено: "+f.name;
   }catch(e){info.textContent="Не удалось прочитать "+f.name+": "+(e&&e.message||"ошибка")}
 }
@@ -206,77 +369,5 @@ const drop=$("drop");
 ["dragover","dragenter"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.style.borderColor="var(--accent)"}));
 ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.style.borderColor=""}));
 drop.addEventListener("drop",e=>{const f=e.dataTransfer&&e.dataTransfer.files[0];if(f)loadFile(f)});
-(async()=>{try{sample=await claude.use("sample")}catch(e){sample=null}
-  if(!sample){runEl.disabled=true;$("docmeta").textContent="Запуск анализа недоступен в этом окне просмотра."}else updMeta()})();
 
-let logLines=[];
-function addLog(kind,msg){const d=document.createElement("div");d.innerHTML=(kind==="tool"?"  · ":"<b>▸ </b>")+esc(msg);
-  if(kind==="tool"){const prev=logEl.querySelector("[data-live]");if(prev)prev.remove();d.dataset.live=1}
-  logEl.append(d);if(logEl.children.length>60)logEl.firstChild.remove()}
-const errCopy={not_granted:"Вы не разрешили использовать Claude для этого артефакта.",rate_limited:"Достигнут лимит запросов, попробуйте позже.",invalid_json:"Модель вернула ответ не в формате JSON. Запустите ещё раз.",upstream_error:"Временная ошибка сервиса. Запустите ещё раз.",tools_unavailable:"В этом окне просмотра инструменты недоступны."};
-
-async function ask(prompt,tools,tier,label){
-  try{return await sample.json(prompt,{tools,modelTier:tier,signal:ctl.signal})}
-  catch(e){if(e&&e.code==="cancelled")throw e;throw Object.assign(new Error(label+": "+(errCopy[e&&e.code]||(e&&e.message)||"ошибка")),{code:e&&e.code})}
-}
-
-runEl.onclick=async()=>{
-  const text=docEl.value;const secs=parse(text);
-  if(secs.length<2){alert&&0;$("docmeta").textContent="Не удалось выделить разделы: нужны нумерованные заголовки.";return}
-  ctl=new AbortController();runEl.disabled=true;stopEl.hidden=false;outEl.hidden=true;outEl.innerHTML="";logEl.innerHTML="";$("progress").hidden=false;
-  const tier=$("tier").value,dropped=[],t0=Date.now();
-  const log=(k,m)=>addLog(k,m);
-  try{
-    log("step",`Разделов: ${secs.length}. Запускаю ${TOPICS.length} агента(ов) по темам`);
-    const per=await Promise.all(TOPICS.map(async t=>{
-      const r=await ask(topicPrompt(t),makeTools(secs,log),tier,"тема "+t.topic);
-      const f=Array.isArray(r&&r.findings)?r.findings:[];
-      log("step",`Тема «${t.topic}»: кандидатов ${f.length}`);return f.map(x=>({...x,topic:t.topic}))}));
-    // code-level verification + dedupe
-    const seen=new Set(),cands=[];
-    for(const f of per.flat()){
-      const quotes=[];let bad=null;
-      for(const q of (f.quotes||[])){const v=verifyQuote(secs,String(q.text||""));if(!v.ok){bad=v.reason+`: «${String(q.text||"").slice(0,80)}»`;break}
-        quotes.push({text:v.text,loc:v.loc,role:ROLES.includes(q.role)?q.role:"reference"})}
-      const need=f.status==="insufficient_data"?1:2;
-      if(!bad&&new Set(quotes.map(q=>nt(q.text))).size<need)bad=`нужно ${need} разных проверенных цитаты`;
-      if(!bad&&!TYPES.includes(f.type))bad="неизвестный тип "+f.type;
-      if(bad){dropped.push({topic:f.topic,reason:bad});continue}
-      const key=quotes.map(q=>nt(q.text).slice(0,60)).sort().join("|");
-      if(seen.has(key)){dropped.push({topic:f.topic,reason:"дубликат другой находки"});continue}
-      seen.add(key);cands.push({...f,quotes,key})}
-    log("step",`После проверки цитат: ${cands.length} (отброшено ${dropped.length})`);
-    const conflicts=await Promise.all(cands.map(async(c,i)=>{
-      const id="C-"+[...c.key].reduce((h,ch)=>(h*31+ch.charCodeAt(0))>>>0,7).toString(16).padStart(8,"0").slice(0,8);
-      if(c.status==="insufficient_data")return{conflictId:id,topic:c.topic,type:c.type,status:"insufficient_data",quotes:c.quotes,explanation:c.explanation,reconcileNote:"",suggestedFix:c.suggestedFix||""};
-      const v=await ask(verifierPrompt(c),makeTools(secs,log),tier,"верификатор");
-      const rec=!!(v&&v.reconcilable);log("step",`Верификатор ${i+1}/${cands.length}: ${rec?"needs_review":"conflict"}`);
-      return{conflictId:id,topic:c.topic,type:c.type,status:rec?"needs_review":"conflict",quotes:c.quotes,explanation:c.explanation,reconcileNote:String(v&&v.reconcileNote||""),suggestedFix:c.suggestedFix||""}}));
-    result={conflicts:conflicts.map(c=>({...c,quotes:c.quotes.map(q=>({text:q.text,location:q.loc,role:q.role}))})),dropped};
-    render(conflicts,dropped,((Date.now()-t0)/1000).toFixed(0));
-    log("step","Готово");
-  }catch(e){
-    if(e&&e.code==="cancelled")log("step","Остановлено");
-    else{const d=document.createElement("div");d.className="err";d.textContent=(e&&e.message)||"Ошибка";logEl.append(d)}
-  }finally{runEl.disabled=false;stopEl.hidden=true;updMeta()}
-};
-
-const STATUS_RU={conflict:"конфликт",needs_review:"нужна проверка",insufficient_data:"мало данных"};
-const ROLE_RU={claim:"заявление",mechanic:"механизм",exception:"исключение",definition:"определение",reference:"отсылка"};
-function render(cs,dropped,sec){
-  const n=s=>cs.filter(c=>c.status===s).length;
-  let h=`<div class="panel"><div class="summary"><div><strong>${n("conflict")}</strong> <span class="note">конфликт</span></div><div><strong>${n("needs_review")}</strong> <span class="note">нужна проверка</span></div><div><strong>${n("insufficient_data")}</strong> <span class="note">мало данных</span></div><span class="meta" style="margin-left:auto">${sec} с</span></div>
-  <div class="row"><button id="copy">Скопировать JSON</button><span class="meta" id="copied"></span></div></div>`;
-  if(!cs.length)h+=`<div class="panel"><p>Противоречий с двумя проверенными цитатами не найдено.</p></div>`;
-  const order={conflict:0,needs_review:1,insufficient_data:2};
-  for(const c of [...cs].sort((a,b)=>order[a.status]-order[b.status])){
-    h+=`<article class="card ${c.status}"><div class="row"><span class="badge ${c.status}">${STATUS_RU[c.status]}</span><span class="tag">${esc(c.topic)} · ${esc(c.type)} · ${c.conflictId}</span></div>
-    <div class="vs">${c.quotes.map(q=>`<blockquote><span class="lbl">${ROLE_RU[q.role]||q.role}</span><q>${esc(q.text)}</q><span class="loc">${esc(q.loc)}</span></blockquote>`).join("")}</div>
-    <p>${esc(c.explanation)}</p>
-    ${c.reconcileNote?`<details><summary>Попытка примирить нормы</summary><p style="white-space:pre-line;margin-top:8px">${esc(c.reconcileNote)}</p></details>`:""}
-    ${c.suggestedFix?`<p><span class="lbl">Как исправить</span><br>${esc(c.suggestedFix)}</p>`:""}</article>`}
-  if(dropped.length)h+=`<details class="panel"><summary>Отброшенные кандидаты: ${dropped.length}</summary><div class="dropped">${dropped.map(d=>`<div>[${esc(d.topic)}] ${esc(d.reason)}</div>`).join("")}</div></details>`;
-  outEl.innerHTML=h;outEl.hidden=false;
-  $("copy").onclick=async()=>{try{await navigator.clipboard.writeText(JSON.stringify({conflicts:result.conflicts},null,2));$("copied").textContent="Скопировано"}catch{$("copied").textContent="Не удалось скопировать"}};
-}
 </script>

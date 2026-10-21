@@ -132,6 +132,12 @@ function parse(text){
 }
 
 /* ---------- quote verification ---------- */
+function stripHead(t){
+  let x=t.replace(/^\s+/,"");
+  const m=x.match(/^([^\n]{1,90})\n+(?=\S)/);
+  if(m&&!/[.;:!?]\s*$/.test(m[1])&&x.length>m[0].length+25)x=x.slice(m[0].length);
+  return x.replace(/^\d+(?:\.\d+)*\.?\s+(?=[A-ZА-Я"“(])/,"").replace(/\s+/g," ").trim();
+}
 function verifyQuote(secs,quote){
   const q=nt(quote);
   if(q.length<25)return{ok:false,reason:"цитата слишком короткая"};
@@ -143,7 +149,7 @@ function verifyQuote(secs,quote){
       const para=s.text.slice(ps);
       if(/^\s*tl;?\s*dr\b/i.test(para)){tl=true;continue}
       const cl=para.match(/^(\d+(?:\.\d+)+)/);
-      return{ok:true,text:s.text.slice(a,b).replace(/\s+/g," "),loc:s.title+(cl?`, п. ${cl[1]}`:"")}}}
+      return{ok:true,text:stripHead(s.text.slice(a,b)),loc:s.title+(cl?`, п. ${cl[1]}`:"")}}}
   return{ok:false,reason:tl?"цитата из TL;DR":"цитата не найдена в документе"};
 }
 
@@ -374,7 +380,7 @@ function drawCards(){
   const order={risk_found:0,insufficient_data:1,no_risk:2};
   const rs=lastResults.filter(c=>filter==="all"||c.status===filter).sort((a,b)=>order[a.status]-order[b.status]);
   $("cards").innerHTML=rs.map(c=>`<article class="card ${c.status}"><div class="row"><span class="badge ${c.status}">${c.statusRu}</span><span class="tag">${c.riskId} · ${esc(c.topic)}${c.conflictType?" · "+esc(c.conflictType):""}${c.jurisdictionDependent?" · зависит от права":""}</span></div>
-    <h2>${esc(TITLES[c.riskId]||c.risk)}</h2>
+    <h2>${esc(TITLES[c.riskId]||c.risk)} — ${c.status==="risk_found"?"риск выявлен":c.status==="no_risk"?"риск не выявлен":"недостаточно данных"}</h2>
     ${c.status!=="no_risk"?`<p class="note">${c.status==="risk_found"?"Риск":"Проверялся риск"}: ${esc(c.risk)}</p>`:""}
     ${c.quotes.length?`<div class="vs">${c.quotes.map(q=>`<blockquote><span class="lbl">${ROLE_RU[q.role]||q.role}</span><q>${esc(q.text)}</q><span class="loc">${esc(q.location)}</span></blockquote>`).join("")}</div>`:`<p class="note">${c.provisionFound?"Подтверждённой цитаты нет.":"Положения в документе нет."}</p>`}
     <p>${esc(c.explanation)}</p>

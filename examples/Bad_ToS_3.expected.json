@@ -1,0 +1,36 @@
+{
+  "note": "DRAFT written by the assistant; anchors = text fragments. A conflict is found when one output conflict has a quote matching anchors[0] and a different quote matching anchors[1].",
+  "conflicts": [
+    {
+      "id": "custody-claim-vs-pooled-wallets",
+      "topic": "custody",
+      "type": "claim_vs_mechanic",
+      "anchors": [
+        [
+          "fully non-custodial",
+          "does not act as a financial custodian",
+          "exclusive control over their digital assets",
+          "does not exercise control over users"
+        ],
+        [
+          "pooled blockchain addresses administered by VelaYield",
+          "signing credentials maintained by VelaYield",
+          "temporarily hold users' deposited assets"
+        ]
+      ]
+    },
+    {
+      "id": "cannot-initiate-vs-may-initiate-transfers",
+      "topic": "custody",
+      "type": "claim_vs_mechanic",
+      "anchors": [
+        [
+          "cannot initiate asset transfers without direct authorization"
+        ],
+        [
+          "may initiate transfers from operational wallets"
+        ]
+      ]
+    }
+  ]
+}

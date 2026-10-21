@@ -71,6 +71,7 @@ details summary{cursor:pointer;color:var(--muted)}
     <textarea id="doc" spellcheck="false" placeholder="Вставьте текст соглашения (английский или русский)…"></textarea>
     <div class="row">
       <button id="run" class="primary">Проверить документ</button>
+      <button id="copyprompt" title="Если запуск здесь недоступен: вставьте запрос в обычный чат Claude">Скопировать запрос для Claude</button>
       <button id="stop" hidden>Остановить</button>
       <label class="meta" style="margin-left:auto">модель
         <select id="tier" style="font:inherit;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:4px;padding:4px"><option value="default">стандартная</option><option value="complex">мощная</option><option value="quick">быстрая</option></select></label>
@@ -235,7 +236,7 @@ async function ask(prompt,tools,tier,label){
   catch(e){if(e&&e.code==="cancelled")throw e;throw Object.assign(new Error(label+": "+(errCopy[e&&e.code]||(e&&e.message)||"ошибка")),{code:e&&e.code})}
 }
 (async()=>{try{sample=await claude.use("sample")}catch(e){sample=null}
-  if(!sample){const m=document.createElement("p");m.className="err";m.id="nosample";m.textContent="Анализ здесь не запускается: артефакт работает через ваш аккаунт Claude. Откройте ссылку, войдя в claude.ai под своей учётной записью (если доступ дали по приглашению, примите его), либо попросите владельца запустить проверку. Загрузка файла и разбор на разделы работают и без входа.";$("docmeta").after(m)}
+  if(!sample){const m=document.createElement("p");m.className="err";m.id="nosample";m.textContent="Анализ здесь не запускается: артефакт работает через ваш аккаунт Claude. Откройте ссылку, войдя в claude.ai под своей учётной записью (если доступ дали по приглашению, примите его), либо нажмите «Скопировать запрос для Claude» и вставьте его в обычный чат Claude (там проверка выполняется тем же каталогом, но без программной сверки цитат). Загрузка файла и разбор на разделы работают и без входа.";$("docmeta").after(m)}
   updMeta()})();
 
 const PLACEHOLDER=/\[[^\]\n]{2,80}\]|\bTBD\b|_{4,}/g;
@@ -305,6 +306,19 @@ runEl.onclick=async()=>{
   }finally{runEl.disabled=false;stopEl.hidden=true;updMeta()}
 };
 
+/* ---------- fallback: one self-contained prompt to paste into any Claude chat ---------- */
+function singlePrompt(text){
+  const jr=JRULES.map(j=>`- ${j.risk_id} [${j.jurisdiction}] ${j.note} (${j.source})`).join("\n");
+  const rs=RISKS.filter(r=>r.check_type!=="mechanical"||true).map(r=>`${r.id} | тип: ${r.check_type} | применимо: ${r.applies_to.join("/")}${r.jurisdiction_dependent?" | зависит от права":""}\n  Риск: ${r.risk}\n  Вопрос: ${r.prompt}\n  Если риск есть, исправление: ${r.output_if_found}`).join("\n\n");
+  return `Ты юридический аналитик, проверяющий пользовательское соглашение Web3-проекта. Ниже текст документа и список проверок.\n\nСначала определи тип проекта: если оператор держит или контролирует активы или ключи (в том числе фактически, по механике текста), проект custodial; если предлагает доходность, стейкинг, стратегии ликвидности — yield. Проверки с пометкой «применимо» не для типа проекта пропускай. Учитывай специфику Web3, тип проекта и применимую юрисдикцию, если они известны.\n\nДля КАЖДОЙ применимой проверки:\n1. Найди соответствующее положение по смыслу, а не по заголовку.\n2. Приведи точную дословную цитату из основного текста пункта (не из TL;DR) и номер пункта. Если положения нет, укажи это.\n3. Поставь статус: «Риск выявлен», «Риск не выявлен» или «Недостаточно данных». Для проверок типа presence положение должно отвечать на каждую часть вопроса; для conflict риском считай либо противоречие (две цитаты, которые нельзя применить к одной ситуации; пробуй примирить нормы и отметь, если получилось), либо пробел, названный в вопросе; для cross_doc — если текст ссылается на непредоставленный документ, статус «Недостаточно данных»; для mechanical — найди незаполненные поля вида [..] или TBD.\n4. Кратко объясни риск и предложи исправление.\n\nНе придумывай нарушения и юридические последствия. Если нужных двух цитат нет, конфликта нет. Не делай категоричных выводов при недостатке данных. Подсказки по юрисдикциям ниже — черновики для юриста, не подавай их как норму права.\n\nФормат ответа на русском: сначала строка «Тип проекта и право», затем таблица из колонок: ID | Статус | Цитата и пункт (или «Положения нет») | Риск кратко | Исправление.\n\nПРОВЕРКИ:\n${rs}\n\nПОДСКАЗКИ ПО ЮРИСДИКЦИЯМ (черновик):\n${jr}\n\nТЕКСТ ДОКУМЕНТА:\n"""\n${text}\n"""`;
+}
+$("copyprompt").onclick=async()=>{
+  const t=docEl.value.trim();
+  if(t.length<200){$("docmeta").textContent="Сначала загрузите файл или вставьте текст.";return}
+  const p=singlePrompt(t);
+  try{await navigator.clipboard.writeText(p);$("docmeta").textContent="Запрос скопирован. Вставьте его в новый чат Claude (claude.ai)."}
+  catch(e){const ta=document.createElement("textarea");ta.value=p;ta.readOnly=true;ta.style.minHeight="160px";$("docmeta").after(ta);ta.select();$("docmeta").textContent="Не удалось скопировать автоматически: выделите текст ниже и скопируйте (Ctrl+C)."}
+};
 const ROLE_RU={claim:"заявление",mechanic:"механизм",exception:"исключение",definition:"определение",reference:"отсылка",provision:"положение"};
 let filter="all";
 function render(rs,prof,dropped,sec){

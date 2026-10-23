@@ -1,3 +1,4 @@
+import { loadConfig } from "./config.js";
 import fs from "node:fs";
 import path from "node:path";
 import { applies, type Config, type Risk } from "./config.js";
@@ -60,10 +61,21 @@ function markDuplicates(results: any[]) {
   }
 }
 
+/** Report language follows the document unless OUTPUT_LANG is set explicitly. */
+export function detectLang(text: string): "Russian" | "English" {
+  const t = text.slice(0, 20000);
+  const cy = (t.match(/[А-Яа-яЁё]/g) ?? []).length, la = (t.match(/[A-Za-z]/g) ?? []).length;
+  return cy > la ? "Russian" : "English";
+}
+
 export async function auditDocument(file: string, cfg: Config, onProgress: (s: string) => void = () => {}): Promise<AuditResult> {
   const startedAt = new Date().toISOString();
   const ocrText = isScannedPdf(file) ? await ocrPdf(file, onProgress) : undefined;
   const doc = parseDocument(file, ocrText);
+  if (!process.env.OUTPUT_LANG_FIXED && !process.env.OUTPUT_LANG_EXPLICIT) {
+    process.env.OUTPUT_LANG = detectLang(doc.sections.map((x) => x.text).join("\n"));
+    cfg = loadConfig();
+  }
   const log: ToolCallRecord[] = [];
   const stats: RunStats[] = [];
   const dropped: AuditResult["dropped"] = [];

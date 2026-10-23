@@ -329,6 +329,8 @@ runEl.onclick=async()=>{
   if(docEl.value.trim().length<200){$("docmeta").textContent="Сначала загрузите файл или вставьте текст соглашения (нужно хотя бы пара абзацев).";return}
   const secs=parse(docEl.value);
   if(secs.length<2){$("docmeta").textContent="Не удалось выделить разделы: нужны нумерованные заголовки.";return}
+  {const t=docEl.value.slice(0,20000),cy=(t.match(/[А-Яа-яЁё]/g)||[]).length,la=(t.match(/[A-Za-z]/g)||[]).length;
+   L=cy>la?"ru":"en";lang=L==="ru"?"Russian":"English";const b=document.getElementById("langbtn");if(b)b.textContent=L==="ru"?"EN":"RU"}
   ctl=new AbortController();runEl.disabled=true;stopEl.hidden=false;outEl.hidden=true;outEl.innerHTML="";logEl.innerHTML="";$("progress").hidden=false;
   const tier=$("tier").value,dropped=[],t0=Date.now(),log=(k,m)=>addLog(k,m);
   try{

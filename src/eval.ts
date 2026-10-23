@@ -6,6 +6,8 @@ import { auditDocument, writeResult, type AuditResult } from "./pipeline.js";
 const dir = path.resolve(process.env.EXAMPLES_DIR || "examples");
 const files = fs.readdirSync(dir).filter((f) => /\.(pdf|docx)$/i.test(f)).sort();
 const isReference = (f: string) => !/^bad_/i.test(f);
+if (process.env.OUTPUT_LANG) process.env.OUTPUT_LANG_EXPLICIT = "1";
+process.env.OUTPUT_LANG_EXPLICIT ||= "1"; // concurrent docs share the process env, so eval keeps one language
 const cfg = loadConfig();
 const CONC = Number(process.env.CONCURRENCY || 2);
 const conflictIds = new Set(cfg.risks.filter((r) => r.check_type === "conflict").map((r) => r.id));

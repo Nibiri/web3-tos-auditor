@@ -3,6 +3,7 @@ import { auditDocument, writeResult } from "./pipeline.js";
 
 const file = process.argv[2];
 if (!file) { console.error("usage: npm run audit -- <file.pdf|file.docx>"); process.exit(2); }
+if (process.env.OUTPUT_LANG) process.env.OUTPUT_LANG_EXPLICIT = "1";
 const cfg = loadConfig();
 const r = await auditDocument(file, cfg, (s) => console.error("·", s));
 const dir = writeResult(r);

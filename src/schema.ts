@@ -2,10 +2,14 @@ import { z } from "zod";
 
 export const STATUSES = ["risk_found", "no_risk", "insufficient_data"] as const;
 export type Status = (typeof STATUSES)[number];
-const EN = /^en/i.test(process.env.OUTPUT_LANG ?? "");
-export const STATUS_RU: Record<Status, string> = EN
-  ? { risk_found: "Risk found", no_risk: "No risk found", insufficient_data: "Insufficient data" }
-  : { risk_found: "Риск выявлен", no_risk: "Риск не выявлен", insufficient_data: "Недостаточно данных" };
+const STATUS_LABELS = {
+  en: { risk_found: "Risk found", no_risk: "No risk found", insufficient_data: "Insufficient data" },
+  ru: { risk_found: "Риск выявлен", no_risk: "Риск не выявлен", insufficient_data: "Недостаточно данных" },
+};
+/** Labels follow OUTPUT_LANG at access time, because the language is chosen per document. */
+export const STATUS_RU = new Proxy({} as Record<Status, string>, {
+  get: (_, k: string) => STATUS_LABELS[/^en/i.test(process.env.OUTPUT_LANG ?? "") ? "en" : "ru"][k as Status],
+});
 export const ROLES = ["claim", "mechanic", "exception", "definition", "reference", "provision"] as const;
 
 /** Final per-check result. */

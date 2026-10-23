@@ -50,11 +50,14 @@ export function loadConfig(dir = path.resolve("config")): Config {
   const [topicsCsv, risksCsv, md, jrCsv] = [read("topics.csv"), read("risks.csv"), read("conflict-types.md"), read("jurisdiction_rules.csv")];
   const jurisdictionRules: JurisdictionRule[] = table(jrCsv).filter((r) => r.risk_id).map((r) => ({ jurisdiction: r.jurisdiction, risk_id: r.risk_id, note: r.note, source: r.source_to_verify, status: r.status }));
   const titles = new Map(fs.existsSync(path.join(dir, "risk_titles.csv")) ? table(read("risk_titles.csv")).map((r) => [r.id, r.title] as [string, string]) : []);
+  // English table: set OUTPUT_LANG=English to use config/risks_en.csv for risk text, prompts, fixes and titles.
+  const en = /^en/i.test(process.env.OUTPUT_LANG ?? "") && fs.existsSync(path.join(dir, "risks_en.csv"))
+    ? new Map(table(read("risks_en.csv")).map((r) => [r.id, r] as [string, Record<string, string>])) : new Map<string, Record<string, string>>();
   const risks: Risk[] = table(risksCsv).filter((r) => r.id).map((r) => {
     const ct = r.check_type as CheckType;
     if (!["presence", "conflict", "cross_doc", "mechanical"].includes(ct)) throw new Error(`risks.csv ${r.id}: bad check_type ${r.check_type}`);
     return { id: r.id, topic: r.topic, applies_to: r.applies_to.split(/[;,]/).map((s) => s.trim()).filter(Boolean),
-      risk: r.risk, prompt: r.prompt, output_if_found: r.output_if_found, check_type: ct, evidence: r.evidence_in_examples, jurisdiction_dependent: /^(yes|да|true|1)$/i.test(r.jurisdiction_dependent ?? ""), title: titles.get(r.id) ?? r.risk };
+      risk: en.get(r.id)?.risk || r.risk, prompt: en.get(r.id)?.prompt || r.prompt, output_if_found: en.get(r.id)?.output_if_found || r.output_if_found, check_type: ct, evidence: r.evidence_in_examples, jurisdiction_dependent: /^(yes|да|true|1)$/i.test(r.jurisdiction_dependent ?? ""), title: en.get(r.id)?.title || titles.get(r.id) || r.risk };
   });
   const agents: Agent[] = table(topicsCsv).filter((r) => r.topic).map((r) => ({
     topic: r.topic, description: r.description, watch_for: r.watch_for, risk_topics: r.risk_topics.split(";").map((s) => s.trim()).filter(Boolean),

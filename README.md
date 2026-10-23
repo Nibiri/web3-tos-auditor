@@ -12,5 +12,5 @@ Each agent only sees the document through 4 MCP tools: list_sections, read_secti
 
 Outputs per run in out/<runId>/: `<doc>.result.json` (schema output + dropped candidates with reasons) and `<doc>.audit.json` (config hash, model, timings, cost, every tool call).
 
-Env: AUDITOR_MODEL (default claude-sonnet-5-5), OUTPUT_LANG (default Russian), CONCURRENCY (eval, default 2), EXAMPLES_DIR.
+Env: AUDITOR_MODEL (default claude-sonnet-5-5), OUTPUT_LANG (default Russian; "English" also switches the risk table to config/risks_en.csv and the status labels), CONCURRENCY (eval, default 2), EXAMPLES_DIR.
 Expected files: `examples/<name>.expected.json` = `{"conflicts":[{"id","anchors":[[sideA fragments],[sideB fragments]]}]}`.

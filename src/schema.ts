@@ -2,11 +2,10 @@ import { z } from "zod";
 
 export const STATUSES = ["risk_found", "no_risk", "insufficient_data"] as const;
 export type Status = (typeof STATUSES)[number];
-export const STATUS_RU: Record<Status, string> = {
-  risk_found: "Риск выявлен",
-  no_risk: "Риск не выявлен",
-  insufficient_data: "Недостаточно данных",
-};
+const EN = /^en/i.test(process.env.OUTPUT_LANG ?? "");
+export const STATUS_RU: Record<Status, string> = EN
+  ? { risk_found: "Risk found", no_risk: "No risk found", insufficient_data: "Insufficient data" }
+  : { risk_found: "Риск выявлен", no_risk: "Риск не выявлен", insufficient_data: "Недостаточно данных" };
 export const ROLES = ["claim", "mechanic", "exception", "definition", "reference", "provision"] as const;
 
 /** Final per-check result. */

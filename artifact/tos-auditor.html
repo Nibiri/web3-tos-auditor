@@ -249,9 +249,26 @@ function addLog(kind,msg){const d=document.createElement("div");d.innerHTML=(kin
   if(kind==="tool"){const prev=logEl.querySelector("[data-live]");if(prev)prev.remove();d.dataset.live=1}
   logEl.append(d);if(logEl.children.length>60)logEl.firstChild.remove()}
 const errCopy={not_granted:"Вы не разрешили использовать Claude для этого артефакта.",rate_limited:"Достигнут лимит запросов, попробуйте позже.",invalid_json:"Модель вернула ответ не в формате JSON. Запустите ещё раз.",upstream_error:"Временная ошибка сервиса. Запустите ещё раз.",tools_unavailable:"В этом окне просмотра инструменты недоступны."};
+function lenientJson(t){
+  if(!t)return undefined;
+  const c=[String(t).trim()];
+  const f=String(t).match(/```(?:json)?\s*([\s\S]*?)```/i);if(f)c.push(f[1].trim());
+  const i=t.indexOf("{"),j=t.lastIndexOf("}");if(i>=0&&j>i)c.push(t.slice(i,j+1));
+  for(const x of c){try{return JSON.parse(x)}catch{try{return JSON.parse(x.replace(/,\s*([}\]])/g,"$1"))}catch{}}}
+  return undefined}
 async function ask(prompt,tools,tier,label){
-  try{return await sample.json(prompt,{tools,modelTier:tier,signal:ctl.signal})}
-  catch(e){if(e&&e.code==="cancelled")throw e;throw Object.assign(new Error(label+": "+(errCopy[e&&e.code]||(e&&e.message)||"ошибка")),{code:e&&e.code})}
+  const STRICT="\n\nОтветь ТОЛЬКО одним JSON-объектом по заданной схеме, без пояснений и без markdown. Если ответ длинный, сократи объяснения, но сохрани валидный JSON.";
+  let lastErr;
+  for(let attempt=0;attempt<3;attempt++){
+    try{return await sample.json(attempt?prompt+STRICT:prompt,{tools,modelTier:tier,signal:ctl.signal})}
+    catch(e){
+      if(e&&e.code==="cancelled")throw e;
+      if(e&&e.code==="invalid_json"){const v=lenientJson(e.text);if(v!==undefined)return v}
+      lastErr=e;
+      if(e&&(e.code==="invalid_json"||e.code==="upstream_error")){addLog("step",label+": повторяю запрос ("+(attempt+1)+")");continue}
+      break}}
+  const e=lastErr;
+  throw Object.assign(new Error(label+": "+(errCopy[e&&e.code]||(e&&e.message)||"ошибка")),{code:e&&e.code})
 }
 (async()=>{try{sample=await claude.use("sample")}catch(e){sample=null}
   if(!sample){const m=document.createElement("p");m.className="err";m.id="nosample";m.textContent="Анализ здесь не запускается: артефакт работает через ваш аккаунт Claude. Откройте ссылку, войдя в claude.ai под своей учётной записью (если доступ дали по приглашению, примите его), либо попросите владельца запустить проверку. Загрузка файла и разбор на разделы работают и без входа.";$("docmeta").after(m);

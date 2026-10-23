@@ -48,6 +48,18 @@ function finalize(doc: ParsedDoc, r: Risk, a: AgentResult, dropped: AuditResult[
   return mk(r, { ...base, status: a.status });
 }
 
+/** Several risks resting on the same quote describe one problem; keep the first and point the rest to it. */
+function markDuplicates(results: any[]) {
+  const seen = new Map<string, string>();
+  for (const r of [...results].sort((a, b) => a.riskId.localeCompare(b.riskId))) {
+    if (r.status !== "risk_found") continue;
+    const keys: string[] = r.quotes.map((q: any) => normText(q.text)).filter((k: string) => k.length >= 25);
+    const hit = keys.map((k) => seen.get(k)).find(Boolean);
+    if (hit) r.dupOf = hit;
+    else keys.forEach((k) => seen.set(k, r.riskId));
+  }
+}
+
 export async function auditDocument(file: string, cfg: Config, onProgress: (s: string) => void = () => {}): Promise<AuditResult> {
   const startedAt = new Date().toISOString();
   const ocrText = isScannedPdf(file) ? await ocrPdf(file, onProgress) : undefined;
@@ -127,6 +139,7 @@ export async function auditDocument(file: string, cfg: Config, onProgress: (s: s
   }));
 
   const results = cfg.risks.map((r) => out.get(r.id)).filter((x): x is Result => !!x);
+  markDuplicates(results);
   const finishedAt = new Date().toISOString();
   return {
     document: doc.name, profile, results, skipped, dropped,

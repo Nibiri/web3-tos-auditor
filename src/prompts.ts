@@ -22,10 +22,19 @@ Skim the document with list_sections / search_document / read_section and answer
 Do not guess beyond the text. Reply with JSON only. Write projectType in ${lang()}.`;
 }
 
+const RISK_NOTES: Record<string, string> = {
+  "R-04": "Достаточно, если запрещённые юрисдикции или санкционные ограничения прописаны в тексте (назови пункт) — это no_risk. Не требуй описания технического скрининга, геоблокировки или проверок; их отсутствие можно упомянуть в объяснении, но статус от этого не меняется.",
+  "R-11": "Если указан лимит (сумма), вопрос закрыт: no_risk, пока исключения не обнуляют лимит. Отсутствие периода не считай дефектом (можно упомянуть в объяснении).",
+  "R-28": "Политика конфиденциальности может быть вынесена в отдельный документ, её отсутствие в файле не нарушение. Есть ссылка на политику, а текста нет → insufficient_data. Ссылки нет → insufficient_data, а не risk_found, пока нет цитаты, показывающей реальное упущение (например, обработка данных без раскрытия).",
+  "R-31": "Отдельные документы могут быть вынесены за файл: отсутствие их текста само по себе не нарушение. Ссылка есть, текста нет → insufficient_data (цитируй ссылку), не risk_found.",
+  "R-27": "risk_found только если есть цитата, которая исключает или ограничивает права потребителей. Одно отсутствие оговорки без такой нормы → insufficient_data с пояснением, что нужна оценка юриста."
+};
+
 const riskBlock = (r: Risk, hints: JurisdictionRule[]) =>
   `[${r.id}] check_type=${r.check_type} | risk: ${r.risk}
   question: ${r.prompt}
   if risk found, fix: ${r.output_if_found}` +
+  (RISK_NOTES[r.id] ? `\n  scope note (lawyer review): ${RISK_NOTES[r.id]}` : "") +
   (r.jurisdiction_dependent
     ? `\n  jurisdiction-dependent: the verdict depends on the applicable law. If it cannot be determined from the text which law applies, or the answer turns on law you cannot establish, answer insufficient_data and say which law matters, not a categorical conclusion.`
     : "") +
@@ -57,7 +66,7 @@ Rules by check_type:
 - presence: the required provision must exist AND answer every part of the question. If any part is left unanswered (no forum named, no limit amount given, the amount is a placeholder, only a cross-reference to "applicable law" instead of a rule, optional wording such as "may seek relief" instead of a binding rule), that is risk_found, even if the clause exists. Missing entirely = risk_found. no_risk only when every part is answered by a quoted clause.
 - conflict: the risk is either (a) a CONTRADICTION: two clauses that cannot both be applied to the same situation. Then you need TWO verified quotes (the claim and the clause that contradicts it) and one conflictType from the list below; if you cannot quote both sides there is no contradiction finding. Or (b) a GAP or DEFECT named in the question (for example no limit amount, an unfilled value, an exception that cancels the limit, optional wording instead of a binding forum, an absent counterpart clause). Then answer risk_found with conflictType "none", quote the clause that shows the gap (or set provisionFound=false if it is entirely absent) and explain it.
 - cross_doc: if the text relies on a document that is not provided (policy, appendix, another agreement) answer insufficient_data and quote the reference. If nothing is referenced, answer no_risk.
-Hard rules: do not invent violations or legal consequences. Do not draw categorical conclusions when information is missing; use insufficient_data. Jurisdiction hints are drafts for a lawyer, never state them as law. The explanation must agree with the status: if it describes any deficiency named in the question (for example no notice period, no appeal route), the status is risk_found, not no_risk. Return exactly one result per risk id.
+Hard rules: do not invent violations or legal consequences. Do not draw categorical conclusions when information is missing; use insufficient_data. Jurisdiction hints are drafts for a lawyer, never state them as law. The explanation must agree with the status: if it describes any deficiency named in the question (for example no notice period, no appeal route), the status is risk_found, not no_risk. Judge only what the question asks: do not require extra elements the question does not name, and do not mark a missing separate document as a violation. Report one root cause once: if several risks rest on the same clause, use the same quotes. Return exactly one result per risk id.
 
 ${needsConflict ? `CONFLICT TYPES (definition, example, and what NOT to count as a conflict):\n${cfg.conflictTypesMd}\n` : ""}
 RISKS TO CHECK:

@@ -14,6 +14,7 @@ export interface Config {
   risks: Risk[];
   jurisdictionRules: JurisdictionRule[];
   conflictTypesMd: string;
+  validatorMd: string;
   conflictTypes: string[];
   hash: string;
   files: Record<string, string>;
@@ -70,8 +71,9 @@ export function loadConfig(dir = path.resolve("config")): Config {
   const conflictTypes = [...md.matchAll(/^## (\w+)\s*$/gm)].map((m) => m[1]);
   if (!conflictTypes.length) throw new Error("conflict-types.md: no '## type' sections found");
   const sha = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
-  const files = { "topics.csv": sha(topicsCsv), "risks.csv": sha(risksCsv), "conflict-types.md": sha(md), "jurisdiction_rules.csv": sha(jrCsv) };
-  return { agents, risks, jurisdictionRules, conflictTypesMd: md, conflictTypes, files, hash: sha(Object.values(files).join()) };
+  const validatorMd = read("validator_prompt.md");
+  const files = { "validator_prompt.md": sha(validatorMd), "topics.csv": sha(topicsCsv), "risks.csv": sha(risksCsv), "conflict-types.md": sha(md), "jurisdiction_rules.csv": sha(jrCsv) };
+  return { agents, risks, jurisdictionRules, conflictTypesMd: md, validatorMd, conflictTypes, files, hash: sha(Object.values(files).join()) };
 }
 
 export const applies = (r: Risk, tags: string[]) => r.applies_to.includes("all") || r.applies_to.some((t) => tags.includes(t));

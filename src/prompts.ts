@@ -101,3 +101,14 @@ ${items.map((i) => `[${i.riskId}] check: ${i.risk}\n  status: ${i.status}\n  exp
 
 Reply with JSON only: {"fixes":[{"riskId":"R-00","correctStatus":"risk_found"|"no_risk"|"insufficient_data","why":"<one sentence in ${lang()}>"}]}`;
 }
+
+export function validatorPrompt(cfg: Config, items: { riskId: string; risk: string; status: string; explanation: string; quotes: { role: string; location: string; text: string }[] }[]): string {
+  return `${cfg.validatorMd.replaceAll("{{LANG}}", lang())}
+
+${TOOLS}
+
+RESULTS:
+${items.map((i) => `[${i.riskId}] check: ${i.risk}\n  status: ${i.status}\n  explanation: ${i.explanation}\n  quotes: ${i.quotes.map((q) => `[${q.role}] (${q.location}) "${q.text}"`).join(" | ") || "none"}`).join("\n\n")}
+
+Reply with JSON only: {"reviews":[{"riskId":"R-00","verdict":"confirm"|"change_status"|"duplicate"|"immaterial","correctStatus":"risk_found"|"no_risk"|"insufficient_data","legalBasis":"...","duplicateOf":"R-00 or empty","why":"one sentence"}]}`;
+}

@@ -28,6 +28,9 @@ export const ResultSchema = z.object({
   reconcileNote: z.string(),
   suggestedFix: z.string(),
   needsReview: z.boolean(),
+  legalBasis: z.string().optional(),
+  dupOf: z.string().optional(),
+  immaterial: z.boolean().optional(),
 });
 export type Result = z.infer<typeof ResultSchema>;
 
@@ -59,6 +62,17 @@ export const makeAgentSchema = (riskIds: string[], conflictTypes: string[]) =>
 export type AgentResult = z.infer<ReturnType<typeof makeAgentSchema>>["results"][number];
 
 export const VerdictSchema = z.object({ reconcilable: z.boolean(), reconcileNote: z.string() });
+
+export const ValidatorSchema = z.object({
+  reviews: z.array(z.object({
+    riskId: z.string(),
+    verdict: z.enum(["confirm", "change_status", "duplicate", "immaterial"]),
+    correctStatus: z.enum(STATUSES),
+    legalBasis: z.string(),
+    duplicateOf: z.string(),
+    why: z.string(),
+  })),
+});
 
 export const ConsistencySchema = z.object({
   fixes: z.array(z.object({ riskId: z.string(), correctStatus: z.enum(STATUSES), why: z.string() })),

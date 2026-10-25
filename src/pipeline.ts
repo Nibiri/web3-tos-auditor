@@ -4,8 +4,8 @@ import path from "node:path";
 import { applies, type Config, type Risk } from "./config.js";
 import { parseDocument, type ParsedDoc } from "./parse.js";
 import { MODEL, runAgent, type RunStats } from "./agent.js";
-import { agentPrompt, consistencyPrompt, profilePrompt, verifierPrompt } from "./prompts.js";
-import { ConsistencySchema, makeAgentSchema, ProfileSchema, STATUS_RU, VerdictSchema, type AgentResult, type Profile, type Result, type Status } from "./schema.js";
+import { agentPrompt, validatorPrompt, profilePrompt, verifierPrompt } from "./prompts.js";
+import { ValidatorSchema, makeAgentSchema, ProfileSchema, STATUS_RU, VerdictSchema, type AgentResult, type Profile, type Result, type Status } from "./schema.js";
 import { verifyQuote } from "./verify.js";
 import { normText } from "./normalize.js";
 import { isScannedPdf, ocrPdf } from "./ocr.js";
@@ -53,7 +53,7 @@ function finalize(doc: ParsedDoc, r: Risk, a: AgentResult, dropped: AuditResult[
 function markDuplicates(results: any[]) {
   const seen = new Map<string, string>();
   for (const r of [...results].sort((a, b) => a.riskId.localeCompare(b.riskId))) {
-    if (r.status !== "risk_found") continue;
+    if (r.status !== "risk_found" || r.dupOf) continue;
     const keys: string[] = r.quotes.map((q: any) => normText(q.text)).filter((k: string) => k.length >= 25);
     const hit = keys.map((k) => seen.get(k)).find(Boolean);
     if (hit) r.dupOf = hit;
@@ -118,23 +118,27 @@ export async function auditDocument(file: string, cfg: Config, onProgress: (s: s
     onProgress(`${doc.name}: ${ag.topic} done (${risks.length} checks)`);
   }));
 
-  // Consistency pass: the status must agree with what the explanation says.
+  // Final validator: whole-document re-check with legal basis, dedup, materiality. Prompt is shared project-wide (config/validator_prompt.md).
   const judged = [...out.values()].filter((x) => x.explanation && x.checkType !== "mechanical");
   if (judged.length) {
-    const cr = await runAgent({
-      label: "consistency", system: "You are a careful legal QA reviewer.",
-      prompt: consistencyPrompt(judged.map((x) => ({ riskId: x.riskId, risk: x.risk, status: x.status, explanation: x.explanation }))),
-      schema: ConsistencySchema, doc, log, stats, maxTurns: 3,
+    const vr = await runAgent({
+      label: "validator", system: "You are a careful senior legal reviewer.",
+      prompt: validatorPrompt(cfg, judged),
+      schema: ValidatorSchema, doc, log, stats, maxTurns: 40,
     });
-    for (const f of cr.fixes) {
+    for (const f of vr.reviews) {
       const x = out.get(f.riskId);
-      if (!x || x.status === f.correctStatus) continue;
-      const risk = cfg.risks.find((r) => r.id === f.riskId)!;
-      onProgress(`${doc.name}: ${f.riskId} status ${x.status} -> ${f.correctStatus}`);
-      x.status = f.correctStatus; x.statusRu = STATUS_RU[f.correctStatus];
-      x.explanation += ` [Статус исправлен проверкой согласованности: ${f.why}]`;
-      if (f.correctStatus === "risk_found" && !x.suggestedFix) x.suggestedFix = risk.output_if_found;
-      if (f.correctStatus !== "risk_found") x.suggestedFix = "";
+      if (!x) continue;
+      x.legalBasis = f.legalBasis;
+      if (f.verdict === "change_status" && x.status !== f.correctStatus) {
+        const risk = cfg.risks.find((r) => r.id === f.riskId)!;
+        onProgress(`${doc.name}: ${f.riskId} status ${x.status} -> ${f.correctStatus}`);
+        x.status = f.correctStatus; x.statusRu = STATUS_RU[f.correctStatus];
+        x.explanation += ` [${f.why}]`;
+        if (f.correctStatus === "risk_found" && !x.suggestedFix) x.suggestedFix = risk.output_if_found;
+        if (f.correctStatus !== "risk_found") x.suggestedFix = "";
+      } else if (f.verdict === "duplicate" && f.duplicateOf && f.duplicateOf !== f.riskId && out.has(f.duplicateOf)) x.dupOf = f.duplicateOf;
+      else if (f.verdict === "immaterial") { x.immaterial = true; x.explanation += ` [${f.why}]`; }
     }
   }
 

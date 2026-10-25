@@ -14,3 +14,7 @@ Outputs per run in out/<runId>/: `<doc>.result.json` (schema output + dropped ca
 
 Env: AUDITOR_MODEL (default claude-sonnet-5-5), OUTPUT_LANG (by default the report language follows the document; set it to force one; "English" also switches the risk table to config/risks_en.csv and the status labels), CONCURRENCY (eval, default 2), EXAMPLES_DIR.
 Expected files: `examples/<name>.expected.json` = `{"conflicts":[{"id","anchors":[[sideA fragments],[sideB fragments]]}]}`.
+
+## Labelling reference documents
+
+Fill `examples/labels/labels_template.xlsx` (column `expected_status`: risk_found / no_risk / insufficient_data; several acceptable values as `risk_found|insufficient_data`; `clause` and `comment` are for humans). Then run `python3 scripts/import_labels.py examples/labels/labels_template.xlsx`: it writes `examples/<document>.expected.json`, which `npm run eval` compares against.

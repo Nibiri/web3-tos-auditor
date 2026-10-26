@@ -260,7 +260,7 @@ Reply with ONLY JSON: {"reconcilable":true|false,"reconcileNote":"..."}`;
 /* ---------- run ---------- */
 const $=id=>document.getElementById(id);
 const docEl=$("doc"),runEl=$("run"),stopEl=$("stop"),logEl=$("log"),outEl=$("out");
-let curRunAt=0,curText="",sample=null,ctl=null,result=null,lastResults=[],db=null,curName="",curKey="",curDocName="",fbState={};
+let canWrite=null,curRunAt=0,curText="",sample=null,ctl=null,result=null,lastResults=[],db=null,curName="",curKey="",curDocName="",fbState={};
 const hashStr=t=>{let h=5381;for(let i=0;i<t.length;i++)h=((h<<5)+h+t.charCodeAt(i))>>>0;return h.toString(36)};
 const esc=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 function updMeta(){const n=docEl.value.trim().length;const secs=n?parse(docEl.value).length:0;
@@ -313,7 +313,8 @@ async function ask(prompt,tools,tier,label){
   updMeta()})();
 
 
-(async()=>{try{db=await claude.use("db")}catch(e){db=null}
+(async()=>{try{const u=await claude.use("user");if(u&&u.can){canWrite=u.can("data.write");if(canWrite===false){const d=document.createElement("div");d.className="err";d.style.margin="8px 0";d.textContent="У вас доступ только на просмотр: оценки и результаты проверок не смогут записаться в общую базу (ошибка invalid_argument). Попросите владельца артефакта выдать вам роль Contributor или Editor в меню «Поделиться».";const m=document.querySelector("main")||document.body;m.insertBefore(d,m.firstChild)}}}catch(e){}
+try{db=await claude.use("db")}catch(e){db=null}
   if(db)fbFlush();
   if(!db)return;$("saved").hidden=false;
   let runDocs=[],fbCnt={};
@@ -478,7 +479,7 @@ function fbPanel(){const el=document.getElementById("fbpanel");if(!el)return;
   el.querySelector("textarea").value=JSON.stringify(all,null,1)}
 function fbPanelHtml(){return `<div class="panel" id="fbpanel"><div class="row"><strong class="fbcount"></strong><button data-flush="1" hidden>Отправить неотправленные</button><button data-dl="1">Скачать мои оценки</button><button data-cp="1">Скопировать</button><span class="meta fbmsg"></span></div><details><summary>Оценки текстом (JSON), если скачивание не сработало</summary><textarea readonly style="min-height:90px;margin-top:8px"></textarea></details></div>`}
 async function fbWrite(rec){
-  const id=rec.id,data={...rec};delete data.synced;delete data.id;
+  const id=rec.id,data=JSON.parse(JSON.stringify(rec,(k,v)=>typeof v==="string"?v.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,""):v));delete data.synced;delete data.id;
   await db.collection("feedback").doc(id).set(data);
   const snap=await db.collection("feedback").doc(id).get();
   if(!snap||!snap.exists)throw{code:"не подтверждена базой"}}
@@ -489,7 +490,7 @@ function fbSend(riskId,rec){
   fbQueue[rec.id]=(fbQueue[rec.id]||Promise.resolve()).then(async()=>{
     const cur=lsRead()[rec.id]||rec;
     try{await fbWrite(cur);const o=lsRead();if(o[cur.id]){o[cur.id].synced=true;lsWrite(o)}st.status="ok";st.err=""}
-    catch(e){st.status="err";st.err=(e&&(e.code||e.message))||"ошибка"}
+    catch(e){st.status="err";st.err=((e&&e.code)||"ошибка")+(e&&e.message&&e.code!==e.message?": "+String(e.message).slice(0,160):"")+(canWrite===false?" — у вас права только на просмотр":"")}
     fbPaint(riskId);fbPanel()});
   return fbQueue[rec.id]}
 function saveFb(riskId,patch){

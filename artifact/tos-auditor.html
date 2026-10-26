@@ -85,7 +85,7 @@ details summary{cursor:pointer;color:var(--muted)}
     <p class="note">Проверка идёт по каталогу из 33 рисков и тратит ваш лимит Claude: 6–15 запросов на документ. Сканы PDF распознаются Claude по картинкам страниц (до 30 страниц).</p>
   </section>
 
-  <section id="saved" class="panel" hidden><h2>Сохранённые проверки</h2><p class="note">Результаты видны всем, у кого есть доступ к артефакту. Нажмите на строку, чтобы открыть.</p><div id="savedlist" style="display:flex;flex-direction:column;gap:6px"></div></section>
+  <section id="saved" class="panel" hidden><details id="saveddet"><summary><h2 style="display:inline;font-size:inherit;margin:0">Сохранённые проверки <span id="savedcnt" class="meta"></span></h2></summary><p class="note" style="margin-top:8px">Результаты и оценки видны всем, у кого есть доступ к артефакту. Нажмите на строку, чтобы открыть документ вместе с его оценками.</p><div id="savedlist" style="display:flex;flex-direction:column;gap:6px"></div></details></section>
 
   <section id="progress" class="panel" hidden aria-live="polite"><h2>Ход работы</h2><div class="log" id="log"></div></section>
   <section id="out" hidden style="display:flex;flex-direction:column;gap:16px"></section>
@@ -260,7 +260,7 @@ Reply with ONLY JSON: {"reconcilable":true|false,"reconcileNote":"..."}`;
 /* ---------- run ---------- */
 const $=id=>document.getElementById(id);
 const docEl=$("doc"),runEl=$("run"),stopEl=$("stop"),logEl=$("log"),outEl=$("out");
-let sample=null,ctl=null,result=null,lastResults=[],db=null,curName="",curKey="",curDocName="",fbState={};
+let curRunAt=0,curText="",sample=null,ctl=null,result=null,lastResults=[],db=null,curName="",curKey="",curDocName="",fbState={};
 const hashStr=t=>{let h=5381;for(let i=0;i<t.length;i++)h=((h<<5)+h+t.charCodeAt(i))>>>0;return h.toString(36)};
 const esc=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 function updMeta(){const n=docEl.value.trim().length;const secs=n?parse(docEl.value).length:0;
@@ -316,16 +316,23 @@ async function ask(prompt,tools,tier,label){
 (async()=>{try{db=await claude.use("db")}catch(e){db=null}
   if(db)fbFlush();
   if(!db)return;$("saved").hidden=false;
-  db.collection("runs").orderBy("createdAt","desc").limit(30).onSnapshot(snap=>{
-    const box=$("savedlist");box.textContent="";
-    if(snap.empty){const p=document.createElement("p");p.className="note";p.textContent="Пока ничего не сохранено. Результат каждой проверки сохраняется сюда автоматически.";box.append(p);return}
-    for(const d of snap.docs){const x=d.data()||{};const rs=Array.isArray(x.results)?x.results:[];
+  let runDocs=[],fbCnt={};
+  const draw=()=>{const box=$("savedlist");box.textContent="";$("savedcnt").textContent=runDocs.length?`(${runDocs.length})`:"";
+    if(!runDocs.length){const p=document.createElement("p");p.className="note";p.textContent="Пока ничего не сохранено. Результат каждой проверки сохраняется сюда автоматически.";box.append(p);return}
+    for(const d of runDocs){const x=d.data()||{};const rs=Array.isArray(x.results)?x.results:[];
       const b=document.createElement("button");b.style.textAlign="left";
       const n=s=>rs.filter(r=>r&&r.status===s).length;
-      b.textContent=`${String(x.name||"Без названия").slice(0,70)} · ${new Date(x.createdAt||0).toLocaleString("ru",{dateStyle:"short",timeStyle:"short"})} · риск: ${n("risk_found")}, мало данных: ${n("insufficient_data")}, без риска: ${n("no_risk")}`;
-      b.onclick=()=>{const prof=x.profile||{tags:[],projectType:"",jurisdiction:"unknown",operator:""};result={profile:prof,results:rs,dropped:[]};lastResults=rs;curKey=x.key||"";curDocName=x.name||"";fbState={};filter="all";render(rs,prof,[],"-");outEl.scrollIntoView&&outEl.scrollIntoView()};
-      box.append(b)}
-  },e=>{$("savedlist").textContent="Не удалось загрузить сохранённые проверки: "+(e&&e.code||"ошибка")})})();
+      const ids=new Set(Object.keys((fbCnt[x.key]||{}).ids||{}));for(const r of Object.values(lsRead()))if(r.docKey===x.key)ids.add(r.riskId);
+      b.textContent=`${String(x.name||"Без названия").slice(0,70)} · ${new Date(x.createdAt||0).toLocaleString("ru",{dateStyle:"short",timeStyle:"short"})} · риск: ${n("risk_found")}, мало данных: ${n("insufficient_data")}, без риска: ${n("no_risk")} · оценок: ${ids.size}`;
+      b.onclick=async()=>{const prof=x.profile||{tags:[],projectType:"",jurisdiction:"unknown",operator:""};result={profile:prof,results:rs,dropped:[]};lastResults=rs;curKey=x.key||"";curDocName=x.name||"";fbState={};filter="all";curRunAt=x.createdAt||0;curText="";
+        try{if(curKey){const dd=await db.collection("docs").doc(curKey).get();if(dd&&dd.exists)curText=String((dd.data()||{}).text||"")}}catch(e){}
+        try{if(curKey){const sn=await db.collection("feedback").where("docKey","==",curKey).get();sn.forEach(f=>{const r=f.data()||{};if(r.riskId)fbState[r.riskId]={v:r.verdict,comment:r.comment||"",status:"ok",at:r.createdAt||0}})}}catch(e){}
+        if(curKey)for(const r of Object.values(lsRead()))if(r.docKey===curKey&&r.riskId)fbState[r.riskId]={v:r.verdict,comment:r.comment||"",status:r.synced?"ok":"local",at:r.createdAt||0};
+        render(rs,prof,[],"-");outEl.scrollIntoView&&outEl.scrollIntoView()};
+      box.append(b)}};
+  db.collection("runs").orderBy("createdAt","desc").limit(30).onSnapshot(snap=>{runDocs=snap.empty?[]:snap.docs;draw()},e=>{$("savedlist").textContent="Не удалось загрузить сохранённые проверки: "+(e&&e.code||"ошибка")});
+  try{db.collection("feedback").limit(1000).onSnapshot(snap=>{fbCnt={};snap.forEach(f=>{const r=f.data()||{};if(!r.docKey)return;const c=fbCnt[r.docKey]=fbCnt[r.docKey]||{ids:{}};c.ids[r.riskId]=1});draw()},()=>{})}catch(e){}
+})();
 
 const PLACEHOLDER=/\[[^\]\n]{2,80}\]|\bTBD\b|_{4,}/g;
 function placeholders(secs){const out=[],seen=new Set();
@@ -410,12 +417,13 @@ runEl.onclick=async()=>{
       if(v&&v.reconcilable){c.status="insufficient_data";c.statusRu=STATUS_RU.insufficient_data;c.needsReview=true}
       log("step",`${c.riskId}: ${v&&v.reconcilable?"нормы можно согласовать, нужна проверка юриста":"противоречие подтверждено"}`)}));
     const results=RISKS.map(r=>out.get(r.id)).filter(Boolean);
-    result={profile:prof,results,dropped};lastResults=results;curKey=hashStr(docEl.value.slice(0,6000)+docEl.value.length);curDocName=(curName||(docEl.value.trim().split("\n")[0]||"Документ")).slice(0,80);fbState={};
+    result={profile:prof,results,dropped};lastResults=results;curKey=hashStr(docEl.value.slice(0,6000)+docEl.value.length);curDocName=(curName||(docEl.value.trim().split("\n")[0]||"Документ")).slice(0,80);fbState={};curRunAt=Date.now();curText=docEl.value;
     render(results,prof,dropped,((Date.now()-t0)/1000).toFixed(0));
     if(db){try{
       const name=(curName||(docEl.value.trim().split("\n")[0]||"Документ")).slice(0,80);
       const compact=results.map(r=>({...r,quotes:r.quotes.map(q=>({...q,text:q.text.slice(0,500)})),explanation:r.explanation.slice(0,1500),reconcileNote:r.reconcileNote.slice(0,1500),suggestedFix:r.suggestedFix.slice(0,800)}));
-      await db.collection("runs").add({name,key:curKey,createdAt:Date.now(),profile:prof,results:compact});
+      await db.collection("runs").add({name,key:curKey,createdAt:curRunAt,profile:prof,results:compact});
+      try{await db.collection("docs").doc(curKey).set({name,createdAt:curRunAt,text:curText.slice(0,400000)})}catch(e){log("step","Текст документа не сохранён (оригинал не откроется из списка): "+((e&&e.code)||"ошибка"))}
       log("step","Результат сохранён: его увидят все, у кого есть доступ");
     }catch(e){log("step","Результат не сохранён: "+((e&&e.code)||(e&&e.message)||"ошибка"))}}
     log("step","Готово"+(failed.length?` (с ошибками в областях: ${failed.join(", ")} — запустите ещё раз)`:""));
@@ -441,11 +449,12 @@ function render(rs,prof,dropped,sec){
   markDups(rs);
   const n=s=>rs.filter(c=>c.status===s&&!c.dupOf&&!c.immaterial).length;
   let h=`<div class="panel"><div class="summary"><div><strong>${n("risk_found")}</strong> <span class="note">${T[L].risk_found.toLowerCase()}</span></div><div><strong>${n("no_risk")}</strong> <span class="note">${T[L].no_risk.toLowerCase()}</span></div><div><strong>${n("insufficient_data")}</strong> <span class="note">${T[L].insufficient_data.toLowerCase()}</span></div><span class="meta" style="margin-left:auto">${sec} ${T[L].sec}</span></div>
-  <p class="note">${esc(prof.projectType||T[L].noType)} · ${T[L].law}: ${esc(prof.jurisdiction)} · ${T[L].operator}: ${esc(prof.operator)}</p>
-  <div class="row" id="filters"><button data-f="all">${T[L].all}</button><button data-f="risk_found">${T[L].risk_found}</button><button data-f="insufficient_data">${T[L].insufficient_data}</button><button data-f="no_risk">${T[L].no_risk}</button><span style="margin-left:auto"></span><button id="copy">${T[L].copy}</button><span class="meta" id="copied"></span></div></div>${fbPanelHtml()}<div id="cards" style="display:flex;flex-direction:column;gap:16px"></div>`;
+  <p class="note">${curRunAt?"Проверено: "+fmtDt(curRunAt)+" · ":""}${esc(prof.projectType||T[L].noType)} · ${T[L].law}: ${esc(prof.jurisdiction)} · ${T[L].operator}: ${esc(prof.operator)}</p>
+  <div class="row" id="filters"><button data-f="all">${T[L].all}</button><button data-f="risk_found">${T[L].risk_found}</button><button data-f="insufficient_data">${T[L].insufficient_data}</button><button data-f="no_risk">${T[L].no_risk}</button><span style="margin-left:auto"></span>${curText?'<button id="openorig">Оригинал и цитаты</button>':""}<button id="copy">${T[L].copy}</button><span class="meta" id="copied"></span></div></div>${fbPanelHtml()}<div id="cards" style="display:flex;flex-direction:column;gap:16px"></div>`;
   if(dropped.length)h+=`<details class="panel"><summary>${T[L].dropped}: ${dropped.length}</summary><div class="dropped">${dropped.map(d=>`<div>[${esc(d.riskId)}] ${esc(d.reason)}</div>`).join("")}</div></details>`;
   outEl.innerHTML=h;outEl.hidden=false;drawCards();fbPanel();
   $("filters").querySelectorAll("button[data-f]").forEach(b=>b.onclick=()=>{filter=b.dataset.f;drawCards()});
+  if($("openorig"))$("openorig").onclick=()=>openViewer("");
   $("copy").onclick=async()=>{try{await navigator.clipboard.writeText(JSON.stringify(result,null,2));$("copied").textContent=T[L].copied}catch{$("copied").textContent=T[L].copyFail}};
 }
 /* ---------- lawyer feedback: local backup first, then shared db, with explicit status ---------- */
@@ -453,7 +462,8 @@ const FBKEY="tosFb1",fbQueue={};let dlCap=null;try{claude.use("downloads").then(
 const lsRead=()=>{try{return JSON.parse(localStorage.getItem(FBKEY)||"{}")||{}}catch{return{}}};
 const lsWrite=o=>{try{localStorage.setItem(FBKEY,JSON.stringify(o));return true}catch{return false}};
 const fbId=(key,rid)=>(key||"unknown")+"_"+String(rid).replace(/[^A-Za-z0-9-]/g,"");
-const fbStatusText=st=>!st||!st.v?"":st.status==="ok"?"✓ Сохранено в общей базе":st.status==="saving"?"Сохраняю…":st.status==="local"?"⚠ Сохранено только в этом браузере (нет доступа к общей базе). Скачайте оценки ниже.":st.status==="err"?`⚠ Не записалось в общую базу (${st.err||"ошибка"}). Оценка сохранена в этом браузере: нажмите «Отправить повторно».`:"";
+const fmtDt=t=>new Date(t).toLocaleString("ru",{dateStyle:"short",timeStyle:"short"});
+const fbStatusText=st=>!st||!st.v?"":st.status==="ok"?"✓ Сохранено в общей базе"+(st.at?" · оценено "+fmtDt(st.at):""):st.status==="saving"?"Сохраняю…":st.status==="local"?"⚠ Сохранено только в этом браузере (нет доступа к общей базе). Скачайте оценки ниже.":st.status==="err"?`⚠ Не записалось в общую базу (${st.err||"ошибка"}). Оценка сохранена в этом браузере: нажмите «Отправить повторно».`:"";
 function fbBlock(c){const st=fbState[c.riskId]||{};
   return `<div class="row fb" data-r="${esc(c.riskId)}" style="border-top:1px solid var(--line);padding-top:8px"><span class="lbl">${T[L].fbT}</span><button data-v="correct" aria-pressed="${st.v==="correct"}">${T[L].ok}</button><button data-v="false_positive" aria-pressed="${st.v==="false_positive"}">${c.status==="risk_found"?T[L].bad:T[L].bad2}</button><input type="text" maxlength="400" placeholder="${T[L].cm}" value="${esc(st.comment||"")}" style="flex:1;min-width:140px;font:inherit;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:4px;padding:4px"><span class="meta fbs" role="status">${esc(fbStatusText(st))}</span>${st.status==="err"||st.status==="local"?'<button data-retry="1">Отправить повторно</button>':""}</div>`}
 function fbPaint(riskId){const st=fbState[riskId]||{};const row=document.querySelector(`.fb[data-r="${riskId}"]`);if(!row)return;
@@ -484,7 +494,7 @@ function fbSend(riskId,rec){
   return fbQueue[rec.id]}
 function saveFb(riskId,patch){
   const c=lastResults.find(x=>x.riskId===riskId);if(!c)return;
-  const st=fbState[riskId]=Object.assign(fbState[riskId]||{},patch);if(!st.v)return;
+  const st=fbState[riskId]=Object.assign(fbState[riskId]||{},patch);if(!st.v)return;st.at=Date.now();
   const id=fbId(curKey,riskId);
   const rec={id,docKey:curKey||"unknown",docName:curDocName||"",riskId,agentStatus:c.status,verdict:st.v,comment:st.comment||"",explanation:String(c.explanation||"").slice(0,800),quotes:(c.quotes||[]).slice(0,3).map(q=>String(q.text).slice(0,300)),dupOf:c.dupOf||"",immaterial:!!c.immaterial,lang:L,createdAt:Date.now(),synced:false};
   const o=lsRead();o[id]=rec;if(!lsWrite(o)){st.localFail=true}
@@ -507,6 +517,38 @@ document.addEventListener("click",e=>{
   else if(t.dataset.cp){const txt=JSON.stringify(Object.values(lsRead()),null,1),m=document.querySelector("#fbpanel .fbmsg");
     (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>{if(m)m.textContent="Скопировано"}).catch(()=>{if(m)m.textContent="Не удалось скопировать: выделите текст ниже вручную"})}});
 document.addEventListener("change",e=>{const i=e.target;if(i.matches&&i.matches(".fb input")){const rid=i.closest(".fb").dataset.r;fbState[rid]=Object.assign(fbState[rid]||{},{comment:i.value.trim()});if((fbState[rid]||{}).v)saveFb(rid,{comment:i.value.trim()})}});
+
+function openViewer(focusId){
+  let v=document.getElementById("viewer");if(v)v.remove();
+  v=document.createElement("div");v.id="viewer";v.style.cssText="position:fixed;inset:0;z-index:50;background:var(--bg,Canvas);color:var(--ink);display:flex;flex-direction:column";
+  const text=curText,rs=lastResults.filter(c=>c.quotes.length);
+  const rngs=[];
+  for(const c of rs)for(const q of c.quotes){
+    const words=String(q.text).replace(/[….]{2,}|\.\.\./g," ").trim().split(/\s+/).filter(Boolean);if(!words.length)continue;
+    const mk=ws=>{try{return new RegExp(ws.map(w=>w.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("\\s+"),"i").exec(text)}catch(e){return null}};
+    let m=mk(words);if(!m&&words.length>8)m=mk(words.slice(0,8));
+    if(m)rngs.push({a:m.index,b:m.index+m[0].length,id:c.riskId,st:c.status})}
+  rngs.sort((x,y)=>x.a-y.a);const ok=[];let end=-1;for(const r of rngs)if(r.a>=end){ok.push(r);end=r.b}
+  const col={risk_found:"rgba(220,60,50,.30)",insufficient_data:"rgba(230,170,30,.35)",no_risk:"rgba(60,160,90,.28)"};
+  const bar=document.createElement("div");bar.className="row";bar.style.cssText="padding:10px 16px;border-bottom:1px solid var(--line)";
+  bar.innerHTML=`<strong>${esc(curDocName||"Документ")}</strong><span class="meta">${curRunAt?"проверено "+fmtDt(curRunAt):""}</span><span style="margin-left:auto"></span><button data-closev="1">Закрыть</button>`;
+  const body=document.createElement("div");body.style.cssText="flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:0";
+  const left=document.createElement("div");left.style.cssText="overflow:auto;padding:16px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55;border-right:1px solid var(--line)";
+  let pos=0;for(const r of ok){left.append(document.createTextNode(text.slice(pos,r.a)));const m=document.createElement("mark");m.dataset.r=r.id;m.style.cssText=`background:${col[r.st]||col.no_risk};color:inherit;padding:0 1px;border-radius:2px`;m.textContent=text.slice(r.a,r.b);left.append(m);pos=r.b}
+  left.append(document.createTextNode(text.slice(pos)));
+  const right=document.createElement("div");right.style.cssText="overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px";
+  const order={risk_found:0,insufficient_data:1,no_risk:2};
+  for(const c of rs.slice().sort((a,b)=>order[a.status]-order[b.status])){
+    const f=fbState[c.riskId]||{},found=ok.some(r=>r.id===c.riskId);
+    const it=document.createElement("div");it.className="card "+c.status;it.dataset.card=c.riskId;it.style.cursor="pointer";
+    it.innerHTML=`<div class="row"><span class="badge ${c.status}">${T[L][c.status]}</span><span class="tag">${c.riskId}</span></div><h2 style="font-size:1rem">${esc(rt(c.riskId).title)}</h2><p>${esc(c.explanation)}</p>${f.v?`<p class="note">Оценка юриста: ${f.v==="correct"?"верно":"ложное срабатывание"}${f.comment?" — "+esc(f.comment):""}${f.at?" · "+fmtDt(f.at):""}</p>`:""}${found?"":`<p class="note">Цитату не удалось найти в тексте дословно.</p>`}`;
+    right.append(it)}
+  body.append(left,right);v.append(bar,body);document.body.append(v);
+  const go=id=>{const m=left.querySelector(`mark[data-r="${id}"]`);right.querySelectorAll("[data-card]").forEach(e=>e.style.outline=e.dataset.card===id?"2px solid var(--ink)":"");left.querySelectorAll("mark").forEach(e=>e.style.outline=e.dataset.r===id?"2px solid var(--ink)":"");if(m)m.scrollIntoView({block:"center"})};
+  v.addEventListener("click",e=>{if(e.target.closest("[data-closev]"))v.remove();const c=e.target.closest("[data-card]");if(c)go(c.dataset.card);const m=e.target.closest("mark");if(m)go(m.dataset.r)});
+  if(focusId)go(focusId)}
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){const v=document.getElementById("viewer");if(v)v.remove()}});
+document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest("button[data-orig]");if(b)openViewer(b.dataset.orig)});
 function drawCards(){
   const order={risk_found:0,insufficient_data:1,no_risk:2};
   const rs=lastResults.filter(c=>filter==="all"||c.status===filter).sort((a,b)=>order[a.status]-order[b.status]);
@@ -521,7 +563,7 @@ function drawCards(){
     ${c.needsReview?`<p class="note">${T[L].review}</p>`:""}
     ${c.reconcileNote?`<details><summary>${T[L].recon}</summary><p style="white-space:pre-line;margin-top:8px">${esc(c.reconcileNote)}</p></details>`:""}
     ${c.suggestedFix?`<p><span class="lbl">${T[L].fix}</span><br>${esc(c.suggestedFix)}</p>`:""}
-    ${fbBlock(c)}</article>`).join("")||`<div class="panel"><p class="note">Нет проверок с таким статусом.</p></div>`;
+    ${curText&&c.quotes.length?`<div><button data-orig="${esc(c.riskId)}">Показать в документе</button></div>`:""}${fbBlock(c)}</article>`).join("")||`<div class="panel"><p class="note">Нет проверок с таким статусом.</p></div>`;
 }
 
 /* ---------- file loading: PDF (pdf.js, OCR for scans), DOCX (mammoth), TXT/MD ---------- */

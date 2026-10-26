@@ -314,6 +314,7 @@ async function ask(prompt,tools,tier,label){
 
 
 (async()=>{try{db=await claude.use("db")}catch(e){db=null}
+  if(db)fbFlush();
   if(!db)return;$("saved").hidden=false;
   db.collection("runs").orderBy("createdAt","desc").limit(30).onSnapshot(snap=>{
     const box=$("savedlist");box.textContent="";
@@ -441,20 +442,70 @@ function render(rs,prof,dropped,sec){
   const n=s=>rs.filter(c=>c.status===s&&!c.dupOf&&!c.immaterial).length;
   let h=`<div class="panel"><div class="summary"><div><strong>${n("risk_found")}</strong> <span class="note">${T[L].risk_found.toLowerCase()}</span></div><div><strong>${n("no_risk")}</strong> <span class="note">${T[L].no_risk.toLowerCase()}</span></div><div><strong>${n("insufficient_data")}</strong> <span class="note">${T[L].insufficient_data.toLowerCase()}</span></div><span class="meta" style="margin-left:auto">${sec} ${T[L].sec}</span></div>
   <p class="note">${esc(prof.projectType||T[L].noType)} · ${T[L].law}: ${esc(prof.jurisdiction)} · ${T[L].operator}: ${esc(prof.operator)}</p>
-  <div class="row" id="filters"><button data-f="all">${T[L].all}</button><button data-f="risk_found">${T[L].risk_found}</button><button data-f="insufficient_data">${T[L].insufficient_data}</button><button data-f="no_risk">${T[L].no_risk}</button><span style="margin-left:auto"></span><button id="copy">${T[L].copy}</button><span class="meta" id="copied"></span></div></div><div id="cards" style="display:flex;flex-direction:column;gap:16px"></div>`;
+  <div class="row" id="filters"><button data-f="all">${T[L].all}</button><button data-f="risk_found">${T[L].risk_found}</button><button data-f="insufficient_data">${T[L].insufficient_data}</button><button data-f="no_risk">${T[L].no_risk}</button><span style="margin-left:auto"></span><button id="copy">${T[L].copy}</button><span class="meta" id="copied"></span></div></div>${fbPanelHtml()}<div id="cards" style="display:flex;flex-direction:column;gap:16px"></div>`;
   if(dropped.length)h+=`<details class="panel"><summary>${T[L].dropped}: ${dropped.length}</summary><div class="dropped">${dropped.map(d=>`<div>[${esc(d.riskId)}] ${esc(d.reason)}</div>`).join("")}</div></details>`;
-  outEl.innerHTML=h;outEl.hidden=false;drawCards();
+  outEl.innerHTML=h;outEl.hidden=false;drawCards();fbPanel();
   $("filters").querySelectorAll("button[data-f]").forEach(b=>b.onclick=()=>{filter=b.dataset.f;drawCards()});
   $("copy").onclick=async()=>{try{await navigator.clipboard.writeText(JSON.stringify(result,null,2));$("copied").textContent=T[L].copied}catch{$("copied").textContent=T[L].copyFail}};
 }
-async function saveFb(riskId,patch){
-  const c=lastResults.find(x=>x.riskId===riskId);if(!c||!db)return;
+/* ---------- lawyer feedback: local backup first, then shared db, with explicit status ---------- */
+const FBKEY="tosFb1",fbQueue={};
+const lsRead=()=>{try{return JSON.parse(localStorage.getItem(FBKEY)||"{}")||{}}catch{return{}}};
+const lsWrite=o=>{try{localStorage.setItem(FBKEY,JSON.stringify(o));return true}catch{return false}};
+const fbId=(key,rid)=>(key||"unknown")+"_"+String(rid).replace(/[^A-Za-z0-9-]/g,"");
+const fbStatusText=st=>!st||!st.v?"":st.status==="ok"?"✓ Сохранено в общей базе":st.status==="saving"?"Сохраняю…":st.status==="local"?"⚠ Сохранено только в этом браузере (нет доступа к общей базе). Скачайте оценки ниже.":st.status==="err"?`⚠ Не записалось в общую базу (${st.err||"ошибка"}). Оценка сохранена в этом браузере: нажмите «Отправить повторно».`:"";
+function fbBlock(c){const st=fbState[c.riskId]||{};
+  return `<div class="row fb" data-r="${esc(c.riskId)}" style="border-top:1px solid var(--line);padding-top:8px"><span class="lbl">${T[L].fbT}</span><button data-v="correct" aria-pressed="${st.v==="correct"}">${T[L].ok}</button><button data-v="false_positive" aria-pressed="${st.v==="false_positive"}">${c.status==="risk_found"?T[L].bad:T[L].bad2}</button><input type="text" maxlength="400" placeholder="${T[L].cm}" value="${esc(st.comment||"")}" style="flex:1;min-width:140px;font:inherit;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:4px;padding:4px"><span class="meta fbs" role="status">${esc(fbStatusText(st))}</span>${st.status==="err"||st.status==="local"?'<button data-retry="1">Отправить повторно</button>':""}</div>`}
+function fbPaint(riskId){const st=fbState[riskId]||{};const row=document.querySelector(`.fb[data-r="${riskId}"]`);if(!row)return;
+  const sp=row.querySelector(".fbs");if(sp){sp.textContent=fbStatusText(st);sp.style.color=st.status==="err"||st.status==="local"?"var(--bad)":""}
+  row.querySelectorAll("button[data-v]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===st.v)));
+  const need=st.status==="err"||st.status==="local",rb=row.querySelector("button[data-retry]");
+  if(need&&!rb){const b=document.createElement("button");b.dataset.retry="1";b.textContent="Отправить повторно";row.append(b)}else if(!need&&rb)rb.remove()}
+function fbPanel(){const el=document.getElementById("fbpanel");if(!el)return;
+  const all=Object.values(lsRead()),pending=all.filter(r=>!r.synced).length;
+  el.querySelector(".fbcount").textContent=`Мои оценки: ${all.length} · в общей базе: ${all.length-pending} · не отправлено: ${pending}`;
+  el.querySelector("[data-flush]").hidden=!pending;
+  el.querySelector("textarea").value=JSON.stringify(all,null,1)}
+function fbPanelHtml(){return `<div class="panel" id="fbpanel"><div class="row"><strong class="fbcount"></strong><button data-flush="1" hidden>Отправить неотправленные</button><button data-dl="1">Скачать мои оценки</button><button data-cp="1">Скопировать</button><span class="meta fbmsg"></span></div><details><summary>Оценки текстом (JSON), если скачивание не сработало</summary><textarea readonly style="min-height:90px;margin-top:8px"></textarea></details></div>`}
+async function fbWrite(rec){
+  const id=rec.id,data={...rec};delete data.synced;delete data.id;
+  await db.collection("feedback").doc(id).set(data);
+  const snap=await db.collection("feedback").doc(id).get();
+  if(!snap||!snap.exists)throw{code:"не подтверждена базой"}}
+function fbSend(riskId,rec){
+  const st=fbState[riskId]=fbState[riskId]||{};
+  if(!db){st.status="local";fbPaint(riskId);fbPanel();return Promise.resolve()}
+  st.status="saving";fbPaint(riskId);
+  fbQueue[rec.id]=(fbQueue[rec.id]||Promise.resolve()).then(async()=>{
+    const cur=lsRead()[rec.id]||rec;
+    try{await fbWrite(cur);const o=lsRead();if(o[cur.id]){o[cur.id].synced=true;lsWrite(o)}st.status="ok";st.err=""}
+    catch(e){st.status="err";st.err=(e&&(e.code||e.message))||"ошибка"}
+    fbPaint(riskId);fbPanel()});
+  return fbQueue[rec.id]}
+function saveFb(riskId,patch){
+  const c=lastResults.find(x=>x.riskId===riskId);if(!c)return;
   const st=fbState[riskId]=Object.assign(fbState[riskId]||{},patch);if(!st.v)return;
-  try{await db.collection("feedback").doc((curKey||"unknown")+"_"+riskId.replace(/[^A-Za-z0-9-]/g,"")).set({docKey:curKey||"unknown",docName:curDocName,riskId,agentStatus:c.status,verdict:st.v,comment:st.comment||"",explanation:String(c.explanation||"").slice(0,800),quotes:(c.quotes||[]).slice(0,3).map(q=>String(q.text).slice(0,300)),dupOf:c.dupOf||"",immaterial:!!c.immaterial,lang:L,createdAt:Date.now()});st.saved=true}catch(e){st.saved=false}
-  const el=document.querySelector(`.fb[data-r="${riskId}"] .meta`);if(el)el.textContent=st.saved?T[L].saved:"";
-  document.querySelectorAll(`.fb[data-r="${riskId}"] button`).forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===st.v)))}
-document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest(".fb button");if(!b)return;saveFb(b.closest(".fb").dataset.r,{v:b.dataset.v})});
-document.addEventListener("change",e=>{const i=e.target;if(i.matches&&i.matches(".fb input"))saveFb(i.closest(".fb").dataset.r,{comment:i.value.trim()})});
+  const id=fbId(curKey,riskId);
+  const rec={id,docKey:curKey||"unknown",docName:curDocName||"",riskId,agentStatus:c.status,verdict:st.v,comment:st.comment||"",explanation:String(c.explanation||"").slice(0,800),quotes:(c.quotes||[]).slice(0,3).map(q=>String(q.text).slice(0,300)),dupOf:c.dupOf||"",immaterial:!!c.immaterial,lang:L,createdAt:Date.now(),synced:false};
+  const o=lsRead();o[id]=rec;if(!lsWrite(o)){st.localFail=true}
+  return fbSend(riskId,rec)}
+async function fbFlush(){
+  const o=lsRead();
+  for(const r of Object.values(o)){if(r.synced)continue;
+    try{await fbWrite(r);const n=lsRead();if(n[r.id]){n[r.id].synced=true;lsWrite(n)}}catch(e){}
+  }
+  fbPanel()}
+document.addEventListener("click",e=>{
+  const t=e.target.closest&&e.target.closest("button");if(!t)return;
+  const row=t.closest(".fb");
+  if(row&&t.dataset.v)saveFb(row.dataset.r,{v:t.dataset.v});
+  else if(row&&t.dataset.retry){const rid=row.dataset.r,rec=lsRead()[fbId(curKey,rid)];if(rec)fbSend(rid,rec)}
+  else if(t.dataset.flush){t.disabled=true;fbFlush().finally(()=>{t.disabled=false})}
+  else if(t.dataset.dl){const txt=JSON.stringify(Object.values(lsRead()),null,1),m=document.querySelector("#fbpanel .fbmsg");
+    try{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([txt],{type:"application/json"}));a.download="tos-auditor-оценки.json";document.body.append(a);a.click();a.remove();if(m)m.textContent="Файл запрошен; если не скачался, скопируйте текст ниже."}catch{if(m)m.textContent="Скачивание недоступно: скопируйте текст ниже."}}
+  else if(t.dataset.cp){const txt=JSON.stringify(Object.values(lsRead()),null,1),m=document.querySelector("#fbpanel .fbmsg");
+    (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>{if(m)m.textContent="Скопировано"}).catch(()=>{if(m)m.textContent="Не удалось скопировать: выделите текст ниже вручную"})}});
+document.addEventListener("change",e=>{const i=e.target;if(i.matches&&i.matches(".fb input")){const rid=i.closest(".fb").dataset.r;fbState[rid]=Object.assign(fbState[rid]||{},{comment:i.value.trim()});if((fbState[rid]||{}).v)saveFb(rid,{comment:i.value.trim()})}});
 function drawCards(){
   const order={risk_found:0,insufficient_data:1,no_risk:2};
   const rs=lastResults.filter(c=>filter==="all"||c.status===filter).sort((a,b)=>order[a.status]-order[b.status]);
@@ -469,7 +520,7 @@ function drawCards(){
     ${c.needsReview?`<p class="note">${T[L].review}</p>`:""}
     ${c.reconcileNote?`<details><summary>${T[L].recon}</summary><p style="white-space:pre-line;margin-top:8px">${esc(c.reconcileNote)}</p></details>`:""}
     ${c.suggestedFix?`<p><span class="lbl">${T[L].fix}</span><br>${esc(c.suggestedFix)}</p>`:""}
-    ${db?`<div class="row fb" data-r="${esc(c.riskId)}" style="border-top:1px solid var(--line);padding-top:8px"><span class="lbl">${T[L].fbT}</span><button data-v="correct" aria-pressed="${(fbState[c.riskId]||{}).v==="correct"}">${T[L].ok}</button><button data-v="false_positive" aria-pressed="${(fbState[c.riskId]||{}).v==="false_positive"}">${c.status==="risk_found"?T[L].bad:T[L].bad2}</button><input type="text" maxlength="400" placeholder="${T[L].cm}" value="${esc((fbState[c.riskId]||{}).comment||"")}" style="flex:1;min-width:140px;font:inherit;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:4px;padding:4px"><span class="meta">${(fbState[c.riskId]||{}).saved?T[L].saved:""}</span></div>`:""}</article>`).join("")||`<div class="panel"><p class="note">Нет проверок с таким статусом.</p></div>`;
+    ${fbBlock(c)}</article>`).join("")||`<div class="panel"><p class="note">Нет проверок с таким статусом.</p></div>`;
 }
 
 /* ---------- file loading: PDF (pdf.js, OCR for scans), DOCX (mammoth), TXT/MD ---------- */

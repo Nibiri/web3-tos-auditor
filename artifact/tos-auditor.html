@@ -366,14 +366,16 @@ runEl.onclick=async()=>{
     const prof={tags:(raw.tags||[]).filter(t=>t==="custodial"||t==="yield"),projectType:String(raw.projectType||""),jurisdiction:String(raw.jurisdiction||"unknown"),jurisdictions:(raw.jurisdictions||[]).filter(j=>["RU","EU/EEA","UK","US"].includes(j)),operator:String(raw.operator||"not stated")};
     log("step",`Тип: ${prof.projectType||"не определён"} · теги: ${prof.tags.join(", ")||"нет"} · право: ${prof.jurisdiction}`);
     const active=RISKS.filter(r=>r.applies_to.includes("all")||r.applies_to.some(t=>prof.tags.includes(t)));
-    const skipped=RISKS.length-active.length,out=new Map();
+    const skipped=RISKS.length-active.length,out=new Map(),failed=[];
     for(const r of active.filter(x=>x.check_type==="mechanical")){
       const ph=placeholders(secs);
       out.set(r.id,ph.length?mkRes(r,{status:"risk_found",provisionFound:true,quotes:ph.slice(0,6),explanation:L==="en"?`Unfilled fields found in the text (${ph.length}).`:`В тексте найдены незаполненные поля (${ph.length}).`,suggestedFix:rt(r.id).fix}):mkRes(r,{status:"no_risk",explanation:"Незаполненных полей не найдено."}))}
     log("step",`Проверок: ${active.length}${skipped?` (пропущено по типу проекта: ${skipped})`:""}. Запускаю ${AGENTS.length} агентов`);
     await Promise.all(AGENTS.map(async ag=>{
       const risks=active.filter(r=>r.check_type!=="mechanical"&&ag.risk_topics.includes(r.topic));if(!risks.length)return;
-      const res=await ask(agentPrompt(ag,risks,prof),makeTools(secs,log),tier,"агент «"+ag.topic+"»");
+      let res=null;
+      try{res=await ask(agentPrompt(ag,risks,prof),makeTools(secs,log),tier,"агент «"+ag.topic+"»")}
+      catch(e){if(e&&e.code==="cancelled")throw e;log("step","⚠ "+((e&&e.message)||"ошибка агента")+" — проверки этой области помечены «Недостаточно данных», остальные продолжаются");failed.push(ag.topic)}
       const list=Array.isArray(res&&res.results)?res.results:[];
       for(const r of risks){const a=list.find(x=>x&&x.riskId===r.id);
         out.set(r.id,a?finalize(secs,r,a,dropped):mkRes(r,{status:"insufficient_data",explanation:"Агент не вернул ответ по этой проверке."}))}
@@ -400,7 +402,9 @@ runEl.onclick=async()=>{
     const toVerify=[...out.values()].filter(x=>x.checkType==="conflict"&&x.status==="risk_found"&&x.conflictType);
     if(toVerify.length)log("step",`Верификатор проверяет противоречий: ${toVerify.length}`);
     await Promise.all(toVerify.map(async c=>{
-      const v=await ask(verifierPrompt(c),makeTools(secs,log),tier,"верификатор "+c.riskId);
+      let v=null;
+      try{v=await ask(verifierPrompt(c),makeTools(secs,log),tier,"верификатор "+c.riskId)}
+      catch(e){if(e&&e.code==="cancelled")throw e;log("step","⚠ "+((e&&e.message)||"ошибка верификатора")+": противоречие оставлено без проверки");v={}}
       c.reconcileNote=String(v&&v.reconcileNote||"");
       if(v&&v.reconcilable){c.status="insufficient_data";c.statusRu=STATUS_RU.insufficient_data;c.needsReview=true}
       log("step",`${c.riskId}: ${v&&v.reconcilable?"нормы можно согласовать, нужна проверка юриста":"противоречие подтверждено"}`)}));
@@ -413,10 +417,10 @@ runEl.onclick=async()=>{
       await db.collection("runs").add({name,key:curKey,createdAt:Date.now(),profile:prof,results:compact});
       log("step","Результат сохранён: его увидят все, у кого есть доступ");
     }catch(e){log("step","Результат не сохранён: "+((e&&e.code)||(e&&e.message)||"ошибка"))}}
-    log("step","Готово");
+    log("step","Готово"+(failed.length?` (с ошибками в областях: ${failed.join(", ")} — запустите ещё раз)`:""));
   }catch(e){
     if(e&&e.code==="cancelled")log("step","Остановлено");
-    else{const d=document.createElement("div");d.className="err";d.textContent=(e&&e.message)||"Ошибка";logEl.append(d)}
+    else{const msg=(e&&e.message)||"Ошибка";const d=document.createElement("div");d.className="err";d.textContent="Ошибка: "+msg;logEl.append(d);$("docmeta").textContent="Анализ прерван: "+msg+". Запустите ещё раз."}
   }finally{runEl.disabled=false;stopEl.hidden=true;updMeta()}
 };
 

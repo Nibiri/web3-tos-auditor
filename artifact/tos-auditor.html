@@ -477,7 +477,7 @@ function fbPanel(){const el=document.getElementById("fbpanel");if(!el)return;
   el.querySelector(".fbcount").textContent=`Мои оценки: ${all.length} · в общей базе: ${all.length-pending} · не отправлено: ${pending}`;
   el.querySelector("[data-flush]").hidden=!pending;
   el.querySelector("textarea").value=JSON.stringify(all,null,1)}
-function fbPanelHtml(){return `<div class="panel" id="fbpanel"><div class="row"><strong class="fbcount"></strong><button data-flush="1" hidden>Отправить неотправленные</button><button data-dl="1">Скачать мои оценки</button><button data-cp="1">Скопировать</button><span class="meta fbmsg"></span></div><details><summary>Оценки текстом (JSON), если скачивание не сработало</summary><textarea readonly style="min-height:90px;margin-top:8px"></textarea></details></div>`}
+function fbPanelHtml(){return `<div class="panel" id="fbpanel"><div class="row"><strong class="fbcount"></strong><button data-flush="1" hidden>Отправить неотправленные</button><button data-send="1">Отправить оценки команде (через комментарий)</button><button data-dl="1">Скачать мои оценки</button><button data-cp="1">Скопировать</button><span class="meta fbmsg"></span></div><details><summary>Оценки текстом (JSON), если скачивание не сработало</summary><textarea readonly style="min-height:90px;margin-top:8px"></textarea></details></div>`}
 async function fbWrite(rec){
   const id=rec.id,data=JSON.parse(JSON.stringify(rec,(k,v)=>typeof v==="string"?v.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,""):v));delete data.synced;delete data.id;
   await db.collection("feedback").doc(id).set(data);
@@ -550,6 +550,28 @@ function openViewer(focusId){
   if(focusId)go(focusId)}
 document.addEventListener("keydown",e=>{if(e.key==="Escape"){const v=document.getElementById("viewer");if(v)v.remove()}});
 document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest("button[data-orig]");if(b)openViewer(b.dataset.orig)});
+
+let sendParts=[],sendI=0;
+function buildParts(){
+  const all=Object.values(lsRead()).filter(r=>!r.synced);const src=all.length?all:Object.values(lsRead());
+  const by={};for(const r of src)(by[r.docKey]=by[r.docKey]||{name:r.docName,rows:[]}).rows.push(r);
+  const parts=[];
+  for(const k of Object.keys(by)){let cur="",head=`TOS-RATINGS v1\ndoc: ${k} | ${String(by[k].name||"").replace(/[\n|]/g," ").slice(0,60)}\n`;cur=head;
+    for(const r of by[k].rows){const ln=`${r.riskId} | ${r.verdict} | ${r.agentStatus} | ${r.createdAt} | ${String(r.comment||"").replace(/[\n|]/g," ").slice(0,200)}\n`;
+      if(new TextEncoder().encode(cur+ln).length>3600){parts.push(cur);cur=head}cur+=ln}
+    parts.push(cur)}
+  return parts}
+document.addEventListener("click",async e=>{
+  const t=e.target.closest&&e.target.closest("button[data-send]");if(!t)return;
+  const msg=document.querySelector("#fbpanel .fbmsg");
+  if(!sendParts.length||sendI>=sendParts.length){sendParts=buildParts();sendI=0}
+  if(!sendParts.length){msg.textContent="Нет оценок для отправки.";return}
+  const txt=sendParts[sendI];
+  try{await navigator.clipboard.writeText(txt)}catch(_){msg.textContent="Не удалось скопировать: откройте «Оценки текстом» ниже, скопируйте и вставьте в комментарий.";}
+  try{const cm=await claude.use("comments");if(!cm)throw 0;await cm.openComposer({element:document.getElementById("fbpanel")});
+    msg.textContent=`Часть ${sendI+1} из ${sendParts.length} скопирована: вставьте её в окно комментария (Ctrl/⌘+V) и отправьте.`+(sendI+1<sendParts.length?" Затем нажмите кнопку ещё раз.":"");sendI++}
+  catch(_){msg.textContent="Комментарии здесь недоступны: скопируйте оценки (кнопка «Скопировать») и отправьте юристу/команде в чат."}
+});
 function drawCards(){
   const order={risk_found:0,insufficient_data:1,no_risk:2};
   const rs=lastResults.filter(c=>filter==="all"||c.status===filter).sort((a,b)=>order[a.status]-order[b.status]);

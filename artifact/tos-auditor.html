@@ -449,7 +449,7 @@ function render(rs,prof,dropped,sec){
   $("copy").onclick=async()=>{try{await navigator.clipboard.writeText(JSON.stringify(result,null,2));$("copied").textContent=T[L].copied}catch{$("copied").textContent=T[L].copyFail}};
 }
 /* ---------- lawyer feedback: local backup first, then shared db, with explicit status ---------- */
-const FBKEY="tosFb1",fbQueue={};
+const FBKEY="tosFb1",fbQueue={};let dlCap=null;try{claude.use("downloads").then(d=>{dlCap=d}).catch(()=>{})}catch{}
 const lsRead=()=>{try{return JSON.parse(localStorage.getItem(FBKEY)||"{}")||{}}catch{return{}}};
 const lsWrite=o=>{try{localStorage.setItem(FBKEY,JSON.stringify(o));return true}catch{return false}};
 const fbId=(key,rid)=>(key||"unknown")+"_"+String(rid).replace(/[^A-Za-z0-9-]/g,"");
@@ -502,7 +502,8 @@ document.addEventListener("click",e=>{
   else if(row&&t.dataset.retry){const rid=row.dataset.r,rec=lsRead()[fbId(curKey,rid)];if(rec)fbSend(rid,rec)}
   else if(t.dataset.flush){t.disabled=true;fbFlush().finally(()=>{t.disabled=false})}
   else if(t.dataset.dl){const txt=JSON.stringify(Object.values(lsRead()),null,1),m=document.querySelector("#fbpanel .fbmsg");
-    try{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([txt],{type:"application/json"}));a.download="tos-auditor-оценки.json";document.body.append(a);a.click();a.remove();if(m)m.textContent="Файл запрошен; если не скачался, скопируйте текст ниже."}catch{if(m)m.textContent="Скачивание недоступно: скопируйте текст ниже."}}
+    if(!dlCap){if(m)m.textContent="Скачивание недоступно в этом окне: скопируйте текст ниже.";return}
+    dlCap.save({filename:"tos-auditor-оценки.json",data:txt}).then(()=>{if(m)m.textContent="Файл сохранён"}).catch(e=>{if(m)m.textContent=(e&&e.code==="declined")?"Сохранение отменено":"Не удалось сохранить файл: скопируйте текст ниже"})}
   else if(t.dataset.cp){const txt=JSON.stringify(Object.values(lsRead()),null,1),m=document.querySelector("#fbpanel .fbmsg");
     (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>{if(m)m.textContent="Скопировано"}).catch(()=>{if(m)m.textContent="Не удалось скопировать: выделите текст ниже вручную"})}});
 document.addEventListener("change",e=>{const i=e.target;if(i.matches&&i.matches(".fb input")){const rid=i.closest(".fb").dataset.r;fbState[rid]=Object.assign(fbState[rid]||{},{comment:i.value.trim()});if((fbState[rid]||{}).v)saveFb(rid,{comment:i.value.trim()})}});

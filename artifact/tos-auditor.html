@@ -292,13 +292,24 @@ async function ask(prompt,tools,tier,label){
   const e=lastErr;
   throw Object.assign(new Error(label+": "+(errCopy[e&&e.code]||(e&&e.message)||"ошибка")),{code:e&&e.code})
 }
-(async()=>{try{sample=await claude.use("sample")}catch(e){sample=null}
-  if(!sample){const m=document.createElement("p");m.className="err";m.id="nosample";m.textContent="Анализ здесь не запускается: артефакт работает через ваш аккаунт Claude. Откройте ссылку, войдя в claude.ai под своей учётной записью (если доступ дали по приглашению, примите его), либо попросите владельца запустить проверку. Загрузка файла и разбор на разделы работают и без входа.";$("docmeta").after(m);
-    const dg=document.createElement("pre");dg.className="meta";dg.style.whiteSpace="pre-wrap";dg.id="diag";dg.textContent="Диагностика…";m.after(dg);
-    (async()=>{const d=["window.claude: "+(window.claude?"есть":"нет"),"адрес: "+location.host];
-      try{const pm=await claude.use("permissions");if(pm){d.push("разрешения: "+JSON.stringify(await pm.state()));
-        const b=document.createElement("button");b.textContent="Открыть настройки разрешений";b.onclick=()=>pm.manage().catch(()=>{});dg.after(b)}else d.push("permissions: недоступно")}catch(e){d.push("permissions: ошибка")}
-      dg.textContent="Диагностика (пришлите разработчику, если проблема останется):\n"+d.join("\n")})()}
+(async()=>{let pm=null,st=null,pmErr="";
+  try{pm=await claude.use("permissions")}catch(e){pmErr=String(e&&e.message||e)}
+  if(pm){try{st=await pm.state("sample")}catch{}
+    // Ask up front: a first-use prompt can leave use("sample") resolved null for the whole page load.
+    if(st==="prompt"){try{await pm.request(["sample"]);st=await pm.state("sample")}catch{}}}
+  try{sample=await claude.use("sample")}catch(e){sample=null}
+  if(!sample){const m=document.createElement("p");m.className="err";m.id="nosample";
+    m.textContent=st==="denied"?"Доступ к Claude для этого артефакта отклонён. Откройте настройки разрешений, включите его и обновите страницу.":(st==="unavailable"||!pm?"Анализ здесь не запускается: в этом окне нет доступа к вашему аккаунту Claude. Откройте ссылку в обычной вкладке браузера, войдя в claude.ai (если доступ дали по приглашению, примите его), либо попросите владельца запустить проверку.":"Анализ не запустился: разрешение на использование Claude не получено. Нажмите «Разрешить Claude» и обновите страницу.")+" Загрузка файла и разбор на разделы работают и без входа.";
+    $("docmeta").after(m);
+    const dg=document.createElement("pre");dg.className="meta";dg.style.whiteSpace="pre-wrap";dg.id="diag";m.after(dg);
+    const d=["sample: "+(st||"нет данных"),"window.claude: "+(window.claude?"есть":"нет"),"адрес: "+location.host];
+    if(pm){try{d.push("разрешения: "+JSON.stringify(await pm.state()))}catch{d.push("разрешения: ошибка")}
+      const row=document.createElement("div");row.className="row";
+      const b1=document.createElement("button");b1.textContent="Разрешить Claude";b1.onclick=async()=>{try{await pm.request(["sample"])}catch{}location.reload()};
+      const b2=document.createElement("button");b2.textContent="Настройки разрешений";b2.onclick=()=>pm.manage().catch(()=>{});
+      const b3=document.createElement("button");b3.textContent="Обновить страницу";b3.onclick=()=>location.reload();
+      row.append(b1,b2,b3);dg.after(row)}else d.push("permissions: "+(pmErr||"недоступно"));
+    dg.textContent="Диагностика (пришлите разработчику, если проблема останется):\n"+d.join("\n")}
   updMeta()})();
 
 

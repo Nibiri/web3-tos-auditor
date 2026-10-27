@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { fewshotMode, loadExamples, selectExamples, type Example, type FewshotMode } from "./fewshot.js";
 
 export type CheckType = "presence" | "conflict" | "cross_doc" | "mechanical";
 export interface Risk {
@@ -18,6 +19,9 @@ export interface Config {
   conflictTypes: string[];
   hash: string;
   files: Record<string, string>;
+  fewshot: Example[];
+  fewshotMode: FewshotMode;
+  fewshotAllowSameDoc: boolean;
 }
 
 /** Minimal RFC-4180 CSV parser (quoted fields, escaped quotes, newlines inside quotes). */
@@ -46,7 +50,7 @@ function table(csv: string): Record<string, string>[] {
   return rows.map((r) => Object.fromEntries(header.map((h, i) => [h.trim(), (r[i] ?? "").trim()])));
 }
 
-export function loadConfig(dir = path.resolve("config")): Config {
+export function loadConfig(dir = path.resolve("config"), opts: { fewshot?: FewshotMode; allowSameDoc?: boolean } = {}): Config {
   const read = (f: string) => fs.readFileSync(path.join(dir, f), "utf8");
   const [topicsCsv, risksCsv, md, jrCsv] = [read("topics.csv"), read("risks.csv"), read("conflict-types.md"), read("jurisdiction_rules.csv")];
   const jurisdictionRules: JurisdictionRule[] = table(jrCsv).filter((r) => r.risk_id).map((r) => ({ jurisdiction: r.jurisdiction, risk_id: r.risk_id, note: r.note, source: r.source_to_verify, status: r.status }));
@@ -73,7 +77,11 @@ export function loadConfig(dir = path.resolve("config")): Config {
   const sha = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
   const validatorMd = read("validator_prompt.md");
   const files = { "validator_prompt.md": sha(validatorMd), "topics.csv": sha(topicsCsv), "risks.csv": sha(risksCsv), "conflict-types.md": sha(md), "jurisdiction_rules.csv": sha(jrCsv) };
-  return { agents, risks, jurisdictionRules, conflictTypesMd: md, validatorMd, conflictTypes, files, hash: sha(Object.values(files).join()) };
+  // lawyer-verified examples (data/lawyer/dataset.jsonl) are part of the config hash, so a run records which examples it saw
+  const mode = opts.fewshot ?? fewshotMode();
+  const fewshot = selectExamples(loadExamples(), mode);
+  const allFiles = { ...files, ...(fewshot.length ? { "fewshot": sha(JSON.stringify(fewshot.map((e) => e.id))) } : {}) };
+  return { agents, risks, jurisdictionRules, conflictTypesMd: md, validatorMd, conflictTypes, files: allFiles, hash: sha(Object.values(allFiles).join()), fewshot, fewshotMode: mode, fewshotAllowSameDoc: !!opts.allowSameDoc };
 }
 
 export const applies = (r: Risk, tags: string[]) => r.applies_to.includes("all") || r.applies_to.some((t) => tags.includes(t));

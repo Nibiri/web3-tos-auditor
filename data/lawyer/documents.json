@@ -1,0 +1,7 @@
+{
+ "nn30i8": {
+  "document": "Telegram_Bot_ToS",
+  "context": "Telegram trading bot ToS, declared non-custodial interface to smart contracts, governed by BVI law, operator is a placeholder",
+  "note": "Source text lives in the lawyer artifact DB (docs/nn30i8); a copy is examples/Telegram_Bot_ToS.docx"
+ }
+}

@@ -1,5 +1,6 @@
 import type { Agent, Config, JurisdictionRule, Risk } from "./config.js";
 import type { Profile } from "./schema.js";
+import { fewshotBlock } from "./fewshot.js";
 
 export function lang(): string {
   return process.env.OUTPUT_LANG || "Russian";
@@ -34,11 +35,11 @@ const RISK_NOTES: Record<string, string> = {
   "R-27": "risk_found только если есть цитата, которая исключает или ограничивает права потребителей. Одно отсутствие оговорки без такой нормы → insufficient_data с пояснением, что нужна оценка юриста."
 };
 
-const riskBlock = (r: Risk, hints: JurisdictionRule[]) =>
+const riskBlock = (r: Risk, hints: JurisdictionRule[], shots = "") =>
   `[${r.id}] check_type=${r.check_type} | risk: ${r.risk}
   question: ${r.prompt}
   if risk found, fix: ${r.output_if_found}` +
-  (RISK_NOTES[r.id] ? `\n  scope note (lawyer review): ${RISK_NOTES[r.id]}` : "") +
+  (RISK_NOTES[r.id] ? `\n  scope note (lawyer review): ${RISK_NOTES[r.id]}` : "") + shots +
   (r.jurisdiction_dependent
     ? `\n  jurisdiction-dependent: the verdict depends on the applicable law. If it cannot be determined from the text which law applies, or the answer turns on law you cannot establish, answer insufficient_data and say which law matters, not a categorical conclusion.`
     : "") +
@@ -47,7 +48,7 @@ const riskBlock = (r: Risk, hints: JurisdictionRule[]) =>
       hints.map((h) => `[${h.jurisdiction}] ${h.note} (${h.source})`).join(" | ")
     : "");
 
-export function agentPrompt(agent: Agent, risks: Risk[], profile: Profile, cfg: Config): string {
+export function agentPrompt(agent: Agent, risks: Risk[], profile: Profile, cfg: Config, docName = ""): string {
   const hints = (id: string) =>
     cfg.jurisdictionRules.filter((j) => j.risk_id === id && (j.jurisdiction === "ANY" || profile.jurisdictions.includes(j.jurisdiction as never)));
   const needsConflict = risks.some((r) => r.check_type === "conflict");
@@ -74,7 +75,7 @@ Hard rules: do not invent violations or legal consequences. Do not draw categori
 
 ${needsConflict ? `CONFLICT TYPES (definition, example, and what NOT to count as a conflict):\n${cfg.conflictTypesMd}\n` : ""}
 RISKS TO CHECK:
-${risks.map((r) => riskBlock(r, hints(r.id))).join("\n\n")}
+${risks.map((r) => riskBlock(r, hints(r.id), fewshotBlock(r.id, cfg.fewshot, docName, cfg.fewshotAllowSameDoc))).join("\n\n")}
 
 Reply with JSON only.`;
 }

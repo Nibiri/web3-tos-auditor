@@ -74,7 +74,7 @@ export async function auditDocument(file: string, cfg: Config, onProgress: (s: s
   const doc = parseDocument(file, ocrText);
   if (!process.env.OUTPUT_LANG_FIXED && !process.env.OUTPUT_LANG_EXPLICIT) {
     process.env.OUTPUT_LANG = detectLang(doc.sections.map((x) => x.text).join("\n"));
-    cfg = loadConfig();
+    cfg = loadConfig(undefined, { fewshot: cfg.fewshotMode, allowSameDoc: cfg.fewshotAllowSameDoc });
   }
   const log: ToolCallRecord[] = [];
   const stats: RunStats[] = [];
@@ -107,7 +107,7 @@ export async function auditDocument(file: string, cfg: Config, onProgress: (s: s
     if (!risks.length) return;
     const Schema = makeAgentSchema(risks.map((r) => r.id), cfg.conflictTypes);
     const res = await runAgent({
-      label: `agent:${ag.topic}`, system: agentPrompt(ag, risks, profile, cfg),
+      label: `agent:${ag.topic}`, system: agentPrompt(ag, risks, profile, cfg, doc.name),
       prompt: `Check the document "${doc.name}" against your ${risks.length} risks and return one result per risk.`,
       schema: Schema, doc, log, stats,
     });

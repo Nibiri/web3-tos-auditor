@@ -1,0 +1,7 @@
+{
+ "note": "Gold status for rows the lawyer marked false_positive: the lawyer rated the model's answer wrong but the artifact does not store the right status, so it is inferred from the lawyer's comment. inferred=true means: confirm with the lawyer. Without an entry a false_positive row has no gold status and is left out of few-shot and eval.",
+ "nn30i8:R-22": { "gold_status": "no_risk", "inferred": true, "basis": "comment: duplicates R-08" },
+ "nn30i8:R-23": { "gold_status": "no_risk", "inferred": true, "basis": "comment: assets stay with the user, return not required" },
+ "nn30i8:R-26": { "gold_status": ["no_risk", "insufficient_data"], "inferred": true, "basis": "comment: no arbitration opt-out is not a violation per se; insufficient_data acceptable if consumer jurisdiction unclear" },
+ "nn30i8:R-33": { "gold_status": "no_risk", "inferred": true, "basis": "comment: the main provisions are present, the rest are optional" }
+}

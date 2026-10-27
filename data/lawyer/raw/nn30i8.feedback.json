@@ -1,0 +1,482 @@
+[
+ {
+  "agentStatus": "risk_found",
+  "comment": "",
+  "createdAt": 1793027729425,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "The operator is only a placeholder, '[Company Name]'. The Terms give no legal entity name, registration number, address or contact for legal notices. The bot handle is also a placeholder.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "by [Company Name] (the “Company”, “we”, “us” or “our"
+  ],
+  "riskId": "R-01",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "no_risk",
+  "comment": "",
+  "createdAt": 1793028187451,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "Acceptance is by clicking 'I Agree' or by using the Services. The Terms carry a 'Last Updated' date, and the company logs the accepted version and a timestamp. The document does not call itself an offer. It states the method and moment of acceptance. BVI law was not assessed in detail.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "By clicking the “I Agree” button (or any similar affirmative button) within the Bot, or by otherwise accessing or using the Services",
+   "the specific version of these Terms accepted by you"
+  ],
+  "riskId": "R-02",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "no_risk",
+  "comment": "",
+  "createdAt": 1793028219266,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "The Terms set a minimum age and a capacity requirement. They also require authority when a legal entity is bound.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "you are at least eighteen (18) years of age, or the age of majority in your jurisdiction",
+   "you have the legal authority to bind that entity to these Terms"
+  ],
+  "riskId": "R-03",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "no_risk",
+  "comment": "",
+  "createdAt": 1793028230116,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "Section 5.1 names sanctions regimes and example jurisdictions, and it names sanctioned-party lists. Section 5.1 also says the company reserves the right to use geo-blocking, but it does not say any checks are actually in place. The terms have no VPN or circumvention ban, so there is nothing to compare against real measures. Under the lawyer's scope note, a stated list of restrictions is enough for no_risk.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "a resident of, citizen of, or located in any jurisdiction subject to comprehensive economic sanctions administered by OFAC, the European Union, the United Nations, or the British Virgin Islands"
+  ],
+  "riskId": "R-04",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "no_risk",
+  "comment": "",
+  "createdAt": 1793028237966,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "The document declares a non-custodial model. No clause describes pooled or operational wallets, operator-held keys, or operator-initiated transfers. The interface-only description in 2.1 matches the declaration, so I found no contradiction.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "The Services are strictly non-custodial. We do not have access to, nor do we store, hold, or manage your private keys, seed phrases, or Digital Assets"
+  ],
+  "riskId": "R-05",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "no_risk",
+  "comment": "",
+  "createdAt": 1793028245817,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "The user is responsible for keys and seed phrases. This matches the non-custodial model, because nothing in the document says the operator controls the keys.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "You are solely responsible for maintaining the security and confidentiality of your Wallet, including your private keys, seed phrases, and passwords"
+  ],
+  "riskId": "R-06",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "no_risk",
+  "comment": "",
+  "createdAt": 1793028258766,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "The operator holds no funds, so there is no operator-controlled withdrawal process and no delay or liquidity-gate conditions. Suspension of Bot access leaves the user able to act directly on-chain with their own Wallet. The 'sole discretion' suspension right affects only Bot access, not control of the assets, so I found no contradiction.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "restricting or terminating your access to the Bot does not affect, restrict, or eliminate your ability to interact directly with the underlying public blockchain networks",
+   "You retain full and sole control over your Digital Assets at all times"
+  ],
+  "riskId": "R-07",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "risk_found",
+  "comment": "",
+  "createdAt": 1793027872612,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "Suspension is allowed with or without cause and without notice. The document states no binding grounds, no duty to notify, no duration, and no appeal or review procedure. Section 6.2 reduces the impact on assets but does not supply any of these elements.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "We reserve the right, at our sole discretion, to suspend, restrict, or terminate your access to the Bot (including via geo-blocking IP addresses) at any time, with or without cause, and without prior notice"
+  ],
+  "riskId": "R-08",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "no_risk",
+  "comment": "",
+  "createdAt": 1793028273017,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "Section 3 discloses smart contract bugs, volatility, slippage and irreversibility. Section 7 mentions bridges and oracles, but only inside a liability exclusion. The Terms do not disclose several risks the question names. These are forks, MEV and frontrunning, and oracle manipulation or failure as a risk. Key loss appears only as a user responsibility in section 2.4, not as a disclosed risk. The disclosure is therefore only partial. [Risk disclosures are specific rather than generic or absent.]",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "interacting with Smart Contracts involves inherent risks, including but not limited to coding vulnerabilities, bugs, hacks, and malicious attacks",
+   "The prices of Digital Assets are highly volatile",
+   "We shall not be liable for any losses arising from the failure, hacking, or malfunction of any bridge, oracle, or external Smart Contract"
+  ],
+  "riskId": "R-09",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "no_risk",
+  "comment": "",
+  "createdAt": 1793028281867,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "Section 11.1 contains an as-is/as-available clause and disclaims implied warranties. It is limited 'to the maximum extent permitted by applicable law', which preserves mandatory rights. Section 12.4 also carves out liability that cannot lawfully be excluded.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "THE SERVICES, THE BOT, AND ALL ASSOCIATED PROTOCOLS ARE PROVIDED ON AN \"AS IS\" AND \"AS AVAILABLE\" BASIS",
+   "DO NOT EXCLUDE OR LIMIT LIABILITY THAT CANNOT LAWFULLY BE EXCLUDED OR LIMITED"
+  ],
+  "riskId": "R-10",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "no_risk",
+  "comment": "",
+  "createdAt": 1793028323435,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "A cap with a filled-in amount (US$50) is stated in section 12.3. The only exception is the standard carve-out for liability that cannot lawfully be excluded, and it does not nullify the cap. No time period is stated for the cap, which is not treated as a defect. The cap is very low, which a lawyer may want to review.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "IN NO EVENT SHALL OUR AGGREGATE LIABILITY TO YOU ARISING OUT OF OR RELATING TO THESE TERMS OR THE SERVICES EXCEED FIFTY US DOLLARS (US$50.00",
+   "DO NOT EXCLUDE OR LIMIT LIABILITY THAT CANNOT LAWFULLY BE EXCLUDED OR LIMITED"
+  ],
+  "riskId": "R-11",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "no_risk",
+  "comment": "",
+  "createdAt": 1793028331118,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "The Terms contain specific liability provisions: an exclusion of indirect damages, an exclusion for security breaches, a cap, and a third-party exclusion in 7.2. They do not rely only on a general reference to applicable law.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "IN NO EVENT SHALL OUR AGGREGATE LIABILITY TO YOU ARISING OUT OF OR RELATING TO THESE TERMS OR THE SERVICES EXCEED FIFTY US DOLLARS (US$50.00",
+   "WE SHALL NOT BE LIABLE FOR LOSSES CAUSED BY SECURITY BREACHES AFFECTING THE SERVICES OR YOUR WALLET"
+  ],
+  "riskId": "R-12",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "risk_found",
+  "comment": "ответственность пользователя слишком широкая, даже без его вины",
+  "createdAt": 1793027903511,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "The indemnity is not limited to the user's own breaches. It covers any claims 'connected with your access to or use of the Services'. That is very broad and has no fault requirement, no exclusion for the Company's own negligence or misconduct, and no cap.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "You agree to defend and indemnify the Company, its affiliates, and their respective directors, officers, employees and agents against claims connected with your access to or use of the Services"
+  ],
+  "riskId": "R-13",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "risk_found",
+  "comment": "статус не раскрыт",
+  "createdAt": 1793027939127,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "R-01",
+  "explanation": "The operator is an unfilled placeholder ([Company Name]). No jurisdiction of incorporation, registration or regulatory status is stated. The BVI governing law in section 13.1 is the law of the contract and does not show where the operator is based or regulated. The Terms say the service is a non-custodial interface and not investment advice, but they say nothing on licensing or supervision. Which regulatory regime applies cannot be determined from the text, so no conclusion is drawn on compliance.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "by [Company Name] (the “Company”, “we”, “us” or “our"
+  ],
+  "riskId": "R-17",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "no_risk",
+  "comment": "",
+  "createdAt": 1793028394037,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "Section 9.1 makes the user solely responsible for their own taxes. It also says the operator does not collect, report, withhold or remit taxes.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "The Company is not responsible for determining the taxes that apply to your transactions on the Services, or for collecting, reporting, withholding, or remitting any taxes arising from any such transactions"
+  ],
+  "riskId": "R-19",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "no_risk",
+  "comment": "",
+  "createdAt": 1793028396987,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "Fees are dynamic and are shown before the user confirms. Gas fees and third-party fees are explained in section 4.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "These fees are dynamically calculated and displayed in the Bot before you confirm a transaction"
+  ],
+  "riskId": "R-20",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "risk_found",
+  "comment": "нет срока уведомления об изменениях",
+  "createdAt": 1793027972911,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "The company may change the Terms at its sole discretion. Notice is promised only for 'material' changes, and no minimum notice period is set. There is no express right to refuse the changes or to exit. Continued use counts as acceptance.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "We reserve the right to modify or update these Terms at any time in our sole discretion",
+   "Your continued use of the Services following the effective date of any changes constitutes your binding acceptance of the revised Terms"
+  ],
+  "riskId": "R-21",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "risk_found",
+  "comment": "дублирует R-08",
+  "createdAt": 1793028002047,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "R-08",
+  "explanation": "Termination can happen at any time without cause or notice, and no procedure is described. Section 6.2 says the user can still use the blockchain directly, which implies assets stay in the user's Wallet. However, the document does not say what happens to pending transactions or other consequences after termination.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "We reserve the right, at our sole discretion, to suspend, restrict, or terminate your access to the Bot (including via geo-blocking IP addresses) at any time, with or without cause, and without prior notice"
+  ],
+  "riskId": "R-22",
+  "verdict": "false_positive"
+ },
+ {
+  "agentStatus": "risk_found",
+  "comment": "активы у пользователя. возврат не требуется",
+  "createdAt": 1793028085380,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "The Terms say nothing about the operator discontinuing the Bot or about a shutdown procedure or timeline. The operator holds no assets, so the practical risk is low. Section 6.2 only covers termination of an individual user's access, not a shutdown of the whole product. The presence check requires an answer, and none is given. [There is no asset-return risk in a non-custodial product, so the gap is not material.]",
+  "immaterial": true,
+  "lang": "en",
+  "quotes": [
+   "restricting or terminating your access to the Bot does not affect, restrict, or eliminate your ability to interact directly with the underlying public blockchain networks"
+  ],
+  "riskId": "R-23",
+  "verdict": "false_positive"
+ },
+ {
+  "agentStatus": "no_risk",
+  "comment": "",
+  "createdAt": 1793028404355,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "The governing law is stated as BVI law. The operator is not identified, so it cannot be checked against the operator's location. The users' jurisdictions are also unknown, so any clash with mandatory consumer rules cannot be assessed. A lawyer should review BVI law and the mandatory consumer rules of the main user markets. [The governing law is clearly defined.]",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "These Terms shall be governed by and construed in accordance with the laws of the British Virgin Islands, without regard to its conflict of law principles"
+  ],
+  "riskId": "R-24",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "no_risk",
+  "comment": "",
+  "createdAt": 1793028408704,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "The forum is binding arbitration, not optional wording. The rules, seat and language are all stated. The BVI seat is consistent with the BVI governing law.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "shall be settled by binding arbitration in accordance with the rules of the BVI International Arbitration Centre",
+   "The seat of the arbitration shall be Road Town, Tortola, British Virgin Islands. The language of the arbitration shall be English"
+  ],
+  "riskId": "R-25",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "risk_found",
+  "comment": "отсутствие права отказаться от арбитража не означает нарушения",
+  "createdAt": 1793028088931,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "The Terms impose mandatory arbitration and a class action waiver. Neither has an opt-out. Whether this is enforceable against users in their own jurisdictions is for a lawyer to check.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "shall be settled by binding arbitration in accordance with the rules of the BVI International Arbitration Centre",
+   "there is no right or authority for any dispute to be arbitrated or resolved on a class-action basis"
+  ],
+  "riskId": "R-26",
+  "verdict": "false_positive"
+ },
+ {
+  "agentStatus": "insufficient_data",
+  "comment": "",
+  "createdAt": 1793028149880,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "R-26",
+  "explanation": "The terms have no clause saying that mandatory consumer rights are preserved. The scope note allows risk_found only if a quoted norm excludes or limits consumer rights. The class-action waiver and the BVI arbitration clause are limited by 'to the full extent permitted by law', and the terms do not state which consumers they cover. Whether these clauses limit mandatory consumer rights depends on the user's local law, for example EU/EEA consumer law, so a lawyer needs to assess it.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "no arbitration or proceeding shall be joined with any other, and there is no right or authority for any dispute to be arbitrated or resolved on a class-action basis"
+  ],
+  "riskId": "R-27",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "insufficient_data",
+  "comment": "",
+  "createdAt": 1793028154439,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "The terms refer to a Privacy Policy, but no text or link is provided. Purposes, retention periods and cross-border transfers cannot be assessed from this document. The applicable data protection law, such as GDPR or UK GDPR, depends on where the user is located.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "agreed to be bound by these Terms and our Privacy Policy"
+  ],
+  "riskId": "R-28",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "no_risk",
+  "comment": "",
+  "createdAt": 1793028423088,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "The Terms define the company's ownership and the scope of the user's license. They also refer to separate licenses for software components, which covers open source.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "are the proprietary property of the Company or our affiliates or licensors",
+   "You are granted a limited, non-exclusive, non-transferable, non-sublicensable license to access and use the Services for your personal or internal business use",
+   "except as expressly permitted by applicable law or the separate license governing the relevant software component"
+  ],
+  "riskId": "R-29",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "risk_found",
+  "comment": "",
+  "createdAt": 1793028107414,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "Unfilled fields found in the text (2).",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "n your access to and use of the Telegram bot accessible via [@YourBotName] (the “Bot”) and the Services provided through it by [Compan",
+   "otName] (the “Bot”) and the Services provided through it by [Company Name] (the “Company”, “we”, “us” or “our”). IMPORTANT: Section 13"
+  ],
+  "riskId": "R-30",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "insufficient_data",
+  "comment": "",
+  "createdAt": 1793028167232,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "R-28",
+  "explanation": "The Privacy Policy is referenced in the preamble and again in 15.3 as part of the entire agreement, but its text is not provided. Other documents are mentioned only as third-party terms, such as Telegram's. Its absence from the file is not itself a violation.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "agreed to be bound by these Terms and our Privacy Policy"
+  ],
+  "riskId": "R-31",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "no_risk",
+  "comment": "",
+  "createdAt": 1793028426855,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "The defined terms are used consistently. 'Wallet' is always the user's non-custodial wallet. I found no direct contradiction between a definition and how the term is used.",
+  "immaterial": false,
+  "lang": "en",
+  "quotes": [
+   "Wallet\" means a non-custodial software application (e.g., MetaMask) or hardware device used to manage private keys and interact with blockchain networks",
+   "You are solely responsible for maintaining the security and confidentiality of your Wallet, including your private keys, seed phrases, and passwords"
+  ],
+  "riskId": "R-32",
+  "verdict": "correct"
+ },
+ {
+  "agentStatus": "risk_found",
+  "comment": "основные положения есть, остальные необязательны",
+  "createdAt": 1793028136048,
+  "docKey": "nn30i8",
+  "docName": "TERMS OF SERVICE",
+  "dupOf": "",
+  "explanation": "Severability and entire agreement are present. There is no clause on assignment, such as the company's right to assign the Terms. There is also no clause on which language version of the Terms prevails. The only language provision is the language of the arbitration. [The core general provisions exist, and the missing items are optional.]",
+  "immaterial": true,
+  "lang": "en",
+  "quotes": [
+   "shall be deemed severable from these Terms",
+   "constitute the entire agreement between you and the Company"
+  ],
+  "riskId": "R-33",
+  "verdict": "false_positive"
+ }
+]
